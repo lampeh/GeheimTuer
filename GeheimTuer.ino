@@ -1,9 +1,8 @@
 #include <WS2812.h>
 
-// LED stripe length
-#define MAXPIX 20
-// animation buffer, read window moves back and forth EXTRAPIX pixels
-#define EXTRAPIX 3
+// MAXPIX+EXTRAPIX must fit into uint8_t
+#define MAXPIX 20  // LED stripe length
+#define EXTRAPIX 3 // animation buffer, read window moves back and forth EXTRAPIX pixels
 
 // WS2812 output
 const int ledPin = 11;
@@ -465,9 +464,10 @@ swTrigger = HIGH;
         // switch to next profile step
         if (driveMillis >= accelProfile[accelProfileIdx].maxMillis) {
           driveMillis = 0;
+          accelProfileIdx++;
 
           // end-stop not reached at end of profile, someone might be in the way
-          if (accelProfile[++accelProfileIdx].maxMillis == 0) {
+          if (accelProfile[accelProfileIdx].maxMillis == 0) {
             motorFree();
             debug(currentMillis, F("End of profile - door blocked\r\n"));
             debug(currentMillis, F("Total ms: "));
@@ -639,9 +639,6 @@ inline void debounce(const int swPin, bool *const swVal, uint16_t *const swDebou
   // similiar to what digitalRead() does, assumes that swPin has no timer output assigned
   // this still leads to several indirect lookups per sample. direct PINx access might be faster
   debounce(portInputRegister(digitalPinToPort(swPin)), digitalPinToBitMask(swPin), swVal, swDebounce);
-/*
-  *swDebounce = ((*swDebounce << 1) | digitalRead(swPin)) & 0x1FFF; // 13-bit debounce
-*/
 }
 
 //__attribute__((always_inline))
