@@ -379,7 +379,6 @@ void loop() {
     debounce(switchBack, &swBack, &swBackDebounce);
   }
 
-
   // fast debounce driver error signals to filter short glitches
   debounce(motorDiagAPin, &motorDiagA, &motorDiagADebounce);
   debounce(motorDiagBPin, &motorDiagB, &motorDiagBDebounce);
@@ -396,26 +395,29 @@ void loop() {
 // remote debugging aid
 // TODO: formalize the commands
 if (Serial.available()) {
-  char c;
-  if ((c = Serial.read()) == 'x') {
-    swTrigger = LOW;
-  } else if (c == 'X') {
-    swTrigger = HIGH;
-  } else if (c == 'b') {
-    swBack = LOW;
-  } else if (c == 'B') {
-    swBack = HIGH;
-  } else if (c == 'f') {
-    swFront = LOW;
-  } else if (c == 'F') {
-    swFront = HIGH;
-  } else if (c == 'r') {
-//    motorEnable();
-    doorState = doorBlocked;
-  } else if (c == 'm') {
-    Serial.println(currentMillis);
-  } else if (c == '\n') {
-    Serial.print(F("\r\n"));
+  switch (char c = Serial.read()) {
+    case 'x':
+        swTrigger = LOW; break;
+    case 'X':
+        swTrigger = HIGH; break;
+    case 'b':
+        swBack = LOW; break;
+    case 'B':
+        swBack = HIGH; break;
+    case 'f':
+        swFront = LOW; break;
+    case 'F':
+        swFront = HIGH; break;
+    case 'm':
+        Serial.println(currentMillis); break;
+    case 'h':
+      motorDisable();
+      doorState = doorError; break;
+    case 'r':
+      motorEnable();
+      doorState = doorBlocked; break;
+    case 'n':
+      Serial.print(F("\r\n")); break;
   }
 }
 
