@@ -319,6 +319,20 @@ void loop() {
   Serial.println(elapsedMillis);
 */
 
+
+  // fast debounce driver error signals to filter short glitches
+  debounce(motorDiagAPin, &motorDiagA, &motorDiagADebounce);
+  debounce(motorDiagBPin, &motorDiagB, &motorDiagBDebounce);
+
+  // The WAM is overheating!
+  if ((motorDiagA == LOW || motorDiagB == LOW) && doorState != doorError) {
+    motorFree();
+    debug(currentMillis, F("Motor driver error condition - door disabled\r\n"));
+    setLeds1(red, ledFade);
+    doorState = doorError;
+  }
+
+
   debounceMillis += elapsedMillis;
   if (debounceMillis >= debounceInterval) {
     debounceMillis = 0;
@@ -326,18 +340,6 @@ void loop() {
     debounce(switchTrigger, &swTrigger, &swTriggerDebounce);
     debounce(switchFront, &swFront, &swFrontDebounce);
     debounce(switchBack, &swBack, &swBackDebounce);
-  }
-
-  // fast debounce driver error signals to filter short glitches
-  debounce(motorDiagAPin, &motorDiagA, &motorDiagADebounce);
-  debounce(motorDiagBPin, &motorDiagB, &motorDiagBDebounce);
-
-  // The WAM's overheating!
-  if ((motorDiagA == LOW || motorDiagB == LOW) && doorState != doorError) {
-    motorFree();
-    debug(currentMillis, F("Motor driver error condition - door disabled\r\n"));
-    setLeds1(red, ledFade);
-    doorState = doorError;
   }
 
 
