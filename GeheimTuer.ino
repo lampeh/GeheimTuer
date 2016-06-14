@@ -66,6 +66,7 @@ const int motorInBPin = 8;
 const int motorPWMPin = 9;
 
 // ad-hoc acceleration profile
+// TODO: self-calibration by means of driveTotalMillis
 struct accelProfile {
   unsigned long maxMillis; // time until next step, 0 == end of profile
   unsigned long stepMillis; // modify PWM value every stepMillis ms
@@ -100,6 +101,57 @@ const struct accelProfile accelProfileLow[] = {
 // try accelerating as fast as possible without skipping belt teeth
 // TODO: install less stiff spring between belt and door to dampen the initial pull
 const struct accelProfile accelProfileHigh[] = {
+  { // slow start
+    maxMillis: 260,
+    stepMillis: 10,
+    factor: 1,
+    add: 1,
+    minPWM: 0,
+    maxPWM: 25,
+    startPWM: 0,
+    useStartPWM: true, // first element always sets initial PWM value
+    brake: false
+  },
+  { // accelerate to full-ish speed and keep running
+    maxMillis: 2300,
+    stepMillis: 5,
+    factor: 1,
+    add: 1,
+    minPWM: 0,
+    maxPWM: 255,
+    startPWM: 0,
+    useStartPWM: false,
+    brake: false
+  },
+  { // slow down before end-stop
+    maxMillis: 1300,
+    stepMillis: 100,
+    factor: 0.9,
+    add: 0,
+    minPWM: 32,
+    maxPWM: 255,
+    startPWM: 0,
+    useStartPWM: false,
+    brake: false
+  },
+  { // seek end-stop
+    maxMillis: 4000,
+    stepMillis: 100,
+    factor: 1,
+    add: -1,
+    minPWM: 32,
+    maxPWM: 64,
+    startPWM: 64,
+    useStartPWM: false,
+    brake: false
+  },
+  {
+    maxMillis: 0
+  }
+};
+
+/*
+const struct accelProfile accelProfileHigh[] = {
 { // slow start
     maxMillis: 350,
     stepMillis: 50,
@@ -122,7 +174,7 @@ const struct accelProfile accelProfileHigh[] = {
     useStartPWM: false,
     brake: false
   },
-/*
+/+
   { // coast
     maxMillis: 1000,
     stepMillis: 50,
@@ -145,7 +197,7 @@ const struct accelProfile accelProfileHigh[] = {
     useStartPWM: true,
     brake: true
   },
-*/
++/
   { // slow down before end-stop
     maxMillis: 1000,
     stepMillis: 100,
@@ -172,6 +224,7 @@ const struct accelProfile accelProfileHigh[] = {
     maxMillis: 0
   }
 };
+*/
 
 const struct accelProfile *accelProfile; // pointer to current profile
 int accelProfileIdx = 0;
@@ -201,6 +254,7 @@ unsigned long lastMillis = 0; // last loop's millis() result
 
 unsigned long driveMillis = 0;
 unsigned long driveStepMillis = 0;
+unsigned long driveTotalMillis = 0;
 
 const unsigned long openInterval = 3000; // ms before the door closes again, unless blocked by button
 unsigned long openMillis = 0;
@@ -221,7 +275,7 @@ uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce,
 
 void setup() {
   Serial.begin(115200);
-  Serial.print(F("\nDoor control init\n"));
+  Serial.print(F("\r\nDoor control init\r\n"));
 
   // disable driver bridges until setup complete
   motorDisable();
@@ -259,16 +313,16 @@ setPwmFrequency(motorPWMPin, 1);
 
   if (swTrigger == LOW || (swFront == LOW && swBack == LOW)) {
     doorState = doorError;
-    Serial.print(F("ERROR\n"));
+    Serial.print(F("ERROR\r\n"));
   } else if (swFront == LOW) {
     doorState = doorClosed;
-    Serial.print(F("closed\n"));
+    Serial.print(F("closed\r\n"));
   } else if (swBack == LOW) {
     doorState = doorOpen;
-    Serial.print(F("open\n"));
+    Serial.print(F("open\r\n"));
   } else {
     doorState = doorBlocked;
-    Serial.print(F("blocked\n"));
+    Serial.print(F("blocked\r\n"));
   }
 
   if (doorState != doorError) {
@@ -325,6 +379,7 @@ void loop() {
     debounce(switchBack, &swBack, &swBackDebounce);
   }
 
+
   // fast debounce driver error signals to filter short glitches
   debounce(motorDiagAPin, &motorDiagA, &motorDiagADebounce);
   debounce(motorDiagBPin, &motorDiagB, &motorDiagBDebounce);
@@ -332,22 +387,50 @@ void loop() {
   // The WAM's overheating!
   if ((motorDiagA == LOW || motorDiagB == LOW) && doorState != doorError) {
     motorFree();
-    Serial.print(F("Motor driver error condition - door disabled\n"));
+    Serial.print(currentMillis);
+    Serial.print(F(" Motor driver error condition - door disabled\r\n"));
     setLeds1(red, ledFade);
     doorState = doorError;
   }
+
+// remote debugging aid
+// TODO: formalize the commands
+if (Serial.available()) {
+  char c;
+  if ((c = Serial.read()) == 'x') {
+    swTrigger = LOW;
+  } else if (c == 'X') {
+    swTrigger = HIGH;
+  } else if (c == 'b') {
+    swBack = LOW;
+  } else if (c == 'B') {
+    swBack = HIGH;
+  } else if (c == 'f') {
+    swFront = LOW;
+  } else if (c == 'F') {
+    swFront = HIGH;
+  } else if (c == 'r') {
+//    motorEnable();
+    doorState = doorBlocked;
+  } else if (c == 'm') {
+    Serial.println(currentMillis);
+  } else if (c == '\n') {
+    Serial.print(F("\r\n"));
+  }
+}
 
   switch(doorState) {
     case doorClosed:
       // wait until a button is pressed or the front switch opens
       if (swFront == HIGH || swTrigger == LOW) {
+        Serial.print(currentMillis);
         if (swFront == HIGH) {
           // maybe someone tried to pull the door open
           // TODO: or the door slams too fast into the end-stop and rebounds. align profile & inertial reality
-          Serial.print(F("Front switch triggered - opening door\n"));
+          Serial.print(F(" Front switch triggered - opening door\r\n"));
           initDrive(backward, accelProfileLow);
         } else {
-          Serial.print(F("Button switch triggered - opening door\n"));
+          Serial.print(F(" Button switch triggered - opening door\r\n"));
           initDrive(backward, accelProfileHigh);
 // TODO: think again. re-arming swTrigger disables deglitching
 // any short HIGH pulse resets swTrigger to LOW
@@ -361,7 +444,8 @@ swTrigger = HIGH;
     case doorOpen:
       // hold the door open if button pressed during openInterval
       if (swTrigger == LOW) {
-        Serial.print(F("Button switch triggered - door blocked\n"));
+        Serial.print(currentMillis);
+        Serial.print(F(" Button switch triggered - door blocked\r\n"));
         motorFree();
         setLeds1(red, ledSolid);
         doorState = doorBlocked;
@@ -371,13 +455,14 @@ swTrigger = HIGH;
 
       openMillis += elapsedMillis;
       if (openMillis >= openInterval || swBack == HIGH) {
+        Serial.print(currentMillis);
         if (swBack == HIGH) {
           // maybe someone tried to pull the door close
           // TODO: or the door slams too fast into the end-stop and rebounds. align profile & inertial reality
-          Serial.print(F("Back switch triggered - closing door\n"));
+          Serial.print(F(" Back switch triggered - closing door\r\n"));
           initDrive(forward, accelProfileLow);
         } else {
-          Serial.print(F("openInterval timeout - closing door\n"));
+          Serial.print(F(" openInterval timeout - closing door\r\n"));
           initDrive(forward, accelProfileHigh);
         }
         setLeds2(white, black, 3, ledForward);
@@ -389,7 +474,10 @@ swTrigger = HIGH;
       // are we there yet?
       if (swBack == LOW) {
         motorBrake();
-        Serial.print(F("Back switch triggered - door open\n"));
+        Serial.print(currentMillis);
+        Serial.print(F(" Back switch triggered - door open\r\n"));
+        Serial.print(F("Total ms: "));
+        Serial.println(driveTotalMillis);
         openMillis = 0;
         setLeds1(green, ledFade);
         doorState = doorOpen;
@@ -400,7 +488,10 @@ swTrigger = HIGH;
     case doorClosing:
       if (doorState == doorClosing && swFront == LOW) {
         motorBrake();
-        Serial.print(F("Front switch triggered - door closed\n"));
+        Serial.print(currentMillis);
+        Serial.print(F(" Front switch triggered - door closed\r\n"));
+        Serial.print(F("Total ms: "));
+        Serial.println(driveTotalMillis);
         setLeds1(green, ledFade);
         doorState = doorClosed;
         break;
@@ -409,7 +500,8 @@ swTrigger = HIGH;
       // stop if button pressed while in motion
       if (swTrigger == LOW) {
         motorFree(); // TODO: motorBrake() might be better for an emergency stop. doesn't make much different in our case, the belt skips and the door stops in both cases
-        Serial.print(F("Button switch triggered - door blocked\n"));
+        Serial.print(currentMillis);
+        Serial.print(F(" Button switch triggered - door blocked\r\n"));
         setLeds1(red, ledSolid);
         doorState = doorBlocked;
 swTrigger = HIGH;
@@ -417,6 +509,7 @@ swTrigger = HIGH;
       }
 
       driveStepMillis += elapsedMillis;
+      driveTotalMillis += elapsedMillis;
       if (driveStepMillis >= accelProfile[accelProfileIdx].stepMillis) {
         driveMillis += driveStepMillis;
         driveStepMillis = 0;
@@ -428,7 +521,10 @@ swTrigger = HIGH;
           // end-stop not reached at end of profile, someone might be in the way
           if (accelProfile[++accelProfileIdx].maxMillis == 0) {
             motorFree();
-            Serial.print(F("End of profile - door blocked\n"));
+            Serial.print(currentMillis);
+            Serial.print(F(" End of profile - door blocked\r\n"));
+            Serial.print(F("Total ms: "));
+            Serial.println(driveTotalMillis);
             setLeds1(red, ledBlink);
             doorState = doorBlocked;
             break;
@@ -451,7 +547,8 @@ swTrigger = HIGH;
             drivePWM = accelProfile[accelProfileIdx].startPWM;
           }
 
-          Serial.print(F("accelProfileIdx: "));
+          Serial.print(currentMillis);
+          Serial.print(F(" accelProfileIdx: "));
           Serial.println(accelProfileIdx);
         }
 
@@ -459,7 +556,8 @@ swTrigger = HIGH;
         drivePWM = min(accelProfile[accelProfileIdx].maxPWM, max(accelProfile[accelProfileIdx].minPWM,
                         (drivePWM + accelProfile[accelProfileIdx].add) * accelProfile[accelProfileIdx].factor));
 
-        Serial.print(F("Drive PWM: "));
+        Serial.print(currentMillis);
+        Serial.print(F(" Drive PWM: "));
         Serial.println(drivePWM);
 
         analogWrite(motorPWMPin, round(drivePWM*drivePWMscale));
@@ -469,14 +567,16 @@ swTrigger = HIGH;
     case doorBlocked:
       // wait until a button is pressed
       if (swTrigger == LOW) {
+        Serial.print(currentMillis);
         // close door only if end-stop is active
         if (swBack == LOW) {
-          Serial.print(F("Button switch triggered - closing door\n"));
-          initDrive(forward, accelProfileLow);
+          Serial.print(F(" Button switch triggered - closing door\r\n"));
+//          initDrive(forward, accelProfileLow);
+          initDrive(forward, accelProfileHigh);
           ledMode = ledForward;
           doorState = doorClosing;
         } else {
-          Serial.print(F("Button switch triggered - opening door\n"));
+          Serial.print(F(" Button switch triggered - opening door\r\n"));
           initDrive(backward, accelProfileLow);
           ledMode = ledBackward;
           doorState = doorOpening;
@@ -489,15 +589,13 @@ swTrigger = HIGH;
     case doorError:
       // wait for reset by qualified service technician
       // TODO: make it user-resettable
-/*
 // wait until driver cools down
 // TODO: this won't work now because motorDisable() pulls the pins low
 if (motorDiagA == HIGH && motorDiagB == HIGH) {
-  motorEnable();
   setLeds1(red, ledSolid);
   doorState = doorBlocked;
+digitalWrite(13, LOW);
 }
-*/
 digitalWrite(13, HIGH);
       break;
   }
@@ -613,12 +711,15 @@ inline void initDrive(const int dir, const struct accelProfile *const profile) {
   accelProfile = profile;
   accelProfileIdx = 0;
   drivePWM = accelProfile[0].startPWM;
-
-  driveMillis = driveStepMillis = 0;
+  driveMillis = driveStepMillis = driveTotalMillis = 0;
 
   switch(dir) {
     case forward:
       motorForward(); break;
+/*
+  digitalWrite(motorInAPin, LOW);
+  digitalWrite(motorInBPin, LOW);
+*/
     case backward:
       motorBackward(); break;
   }
@@ -641,70 +742,51 @@ void motorDisable() {
   digitalWrite(motorDiagBPin, LOW);
   pinMode(motorDiagBPin, OUTPUT);
 
-  Serial.print(F("Motor driver disabled\n"));
+  Serial.print(F("Motor driver disabled\r\n"));
 }
 
 void motorEnable() {
-  // return control to pull-ups on the BB-VNH3SP30 board
+  // return control to pull-ups on the driver2 board
   pinMode(motorDiagAPin, INPUT);
   pinMode(motorDiagBPin, INPUT);
-  Serial.print(F("Motor driver enabled\n"));
+  Serial.print(F("Motor driver enabled\r\n"));
 }
 
 void motorBrake() {
   _motorBrake();
-  Serial.print(F("Brake engaged\n"));
+  Serial.print(F("Brake engaged\r\n"));
 }
 
 void _motorBrake() {
   setMotorBits(0x00);
-/*
-  digitalWrite(motorInAPin, LOW);
-  digitalWrite(motorInBPin, LOW);
-*/
   digitalWrite(motorPWMPin, HIGH);
 }
 
 void motorFree() {
   _motorFree();
-  Serial.print(F("Brake disengaged\n"));
+  Serial.print(F("Brake disengaged\r\n"));
 }
 
 void _motorFree() {
   setMotorBits(0x00);
-/*
-  digitalWrite(motorPWMPin, LOW);
-  digitalWrite(motorInAPin, LOW);
-  digitalWrite(motorInBPin, LOW);
-*/
 }
 
 void motorForward() {
   _motorForward();
-  Serial.print(F("Forward\n"));
+  Serial.print(F("Forward\r\n"));
 }
 
 void _motorForward() {
   setMotorBits(0x02);
-/*
-  digitalWrite(motorPWMPin, LOW);
-  digitalWrite(motorInAPin, HIGH);
-  digitalWrite(motorInBPin, LOW);
-*/
 }
 
 void motorBackward() {
   _motorBackward();
-  Serial.print(F("Backward\n"));
+  Serial.print(F("Backward\r\n"));
 }
 
 void _motorBackward() {
   setMotorBits(0x01);
-/*
-  digitalWrite(motorPWMPin, LOW);
-  digitalWrite(motorInAPin, LOW);
-  digitalWrite(motorInBPin, HIGH);
-*/
 }
 
 
@@ -754,9 +836,9 @@ void setPwmFrequency(int pin, int divisor) {
       default: return;
     }
     if(pin == 5 || pin == 6) {
-      TCCR0B = TCCR0B & 0b11111000 | mode;
+      TCCR0B = (TCCR0B & 0b11111000) | mode;
     } else {
-      TCCR1B = TCCR1B & 0b11111000 | mode;
+      TCCR1B = (TCCR1B & 0b11111000) | mode;
     }
   } else if(pin == 3 || pin == 11) {
     switch(divisor) {
@@ -769,7 +851,7 @@ void setPwmFrequency(int pin, int divisor) {
       case 1024: mode = 0x7; break;
       default: return;
     }
-    TCCR2B = TCCR2B & 0b11111000 | mode;
+    TCCR2B = (TCCR2B & 0b11111000) | mode;
   }
 }
 
