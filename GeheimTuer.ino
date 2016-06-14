@@ -416,7 +416,7 @@ if (Serial.available()) {
     case 'r':
       motorEnable();
       doorState = doorBlocked; break;
-    case 'n':
+    case '\n':
       Serial.print(F("\r\n")); break;
   }
 }
