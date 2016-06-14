@@ -112,7 +112,7 @@ const struct accelProfile accelProfileHigh[] = {
     brake: false
   },
   { // accelerate and keep running
-    maxMillis: 2300,
+    maxMillis: 2000,
     stepMillis: 5,
     factor: 1,
     add: 1,
@@ -362,12 +362,12 @@ if (Serial.available()) {
         Serial.println(currentMillis); break;
     case 'h':
       motorDisable();
-      doorState = doorError; break;
+      doorState = doorError;
+      break;
     case 'r':
       motorEnable();
-      doorState = doorBlocked; break;
-    case '\n':
-      Serial.print(F("\r\n")); break;
+      doorState = doorBlocked;
+      break;
   }
 }
 
