@@ -218,6 +218,7 @@ const unsigned long ledMoveInterval = 250; // shift LED window every X ms
 unsigned long ledMillis = 0;
 
 bool swFront, swBack, swTrigger, motorDiagA, motorDiagB; // debounced inputs
+bool swFrontDeglitch, swBackDeglitch, swTriggerDeglitch, motorDiagADeglitch, motorDiagBDeglitch; // TODO: quick hack. document
 uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce, motorDiagBDebounce; // debounce shift registers
 
 
@@ -253,9 +254,9 @@ setPwmFrequency(motorPWMPin, 1);
   LED.sync();
 
   // initialize debounce registers, assume steady state
-  swFrontDebounce = (swFront = digitalRead(switchFront)) * 0xFFFF;
-  swBackDebounce = (swBack = digitalRead(switchBack)) * 0xFFFF;
-  swTriggerDebounce = (swTrigger = digitalRead(switchTrigger)) * 0xFFFF;
+  swFrontDebounce = (swFront = swFrontDeglitch = digitalRead(switchFront)) * 0xFFFF;
+  swBackDebounce = (swBack = swBackDeglitch = digitalRead(switchBack)) * 0xFFFF;
+  swTriggerDebounce = (swTrigger = swTriggerDeglitch = digitalRead(switchTrigger)) * 0xFFFF;
 
   Serial.print(F("Door status: "));
 
@@ -278,8 +279,8 @@ setPwmFrequency(motorPWMPin, 1);
     motorEnable();
 
     // diag pull-ups should have brought the lines up by now
-    motorDiagADebounce = (motorDiagA = digitalRead(motorDiagAPin)) * 0xFFFF;
-    motorDiagBDebounce = (motorDiagB = digitalRead(motorDiagBPin)) * 0xFFFF;
+    motorDiagADebounce = (motorDiagA = motorDiagADeglitch = digitalRead(motorDiagAPin)) * 0xFFFF;
+    motorDiagBDebounce = (motorDiagB = motorDiagBDeglitch = digitalRead(motorDiagBPin)) * 0xFFFF;
 
     if (doorState != doorBlocked) {
       motorBrake();
@@ -320,8 +321,8 @@ void loop() {
 
 
   // fast debounce driver error signals to filter short glitches
-  debounce(motorDiagAPin, &motorDiagA, &motorDiagADebounce);
-  debounce(motorDiagBPin, &motorDiagB, &motorDiagBDebounce);
+  debounce(motorDiagAPin, &motorDiagA, &motorDiagADeglitch, &motorDiagADebounce);
+  debounce(motorDiagBPin, &motorDiagB, &motorDiagBDeglitch, &motorDiagBDebounce);
 
   // The WAM is overheating!
   if ((motorDiagA == LOW || motorDiagB == LOW) && doorState != doorError) {
@@ -336,9 +337,9 @@ void loop() {
   if (debounceMillis >= debounceInterval) {
     debounceMillis = 0;
 
-    debounce(switchTrigger, &swTrigger, &swTriggerDebounce);
-    debounce(switchFront, &swFront, &swFrontDebounce);
-    debounce(switchBack, &swBack, &swBackDebounce);
+    debounce(switchTrigger, &swTrigger, &swTriggerDeglitch, &swTriggerDebounce);
+    debounce(switchFront, &swFront, &swFrontDeglitch, &swFrontDebounce);
+    debounce(switchBack, &swBack, &swBackDeglitch, &swBackDebounce);
   }
 
 
@@ -384,9 +385,7 @@ if (Serial.available()) {
         } else {
           debug(currentMillis, F("Button switch triggered - opening door\r\n"));
           initDrive(backward, accelProfileHigh);
-// TODO: think again. re-arming swTrigger disables deglitching
-// any short HIGH pulse resets swTrigger to LOW
-swTrigger = HIGH;
+          swTrigger = HIGH; // re-arm swTrigger
         }
         setLeds2(white, black, 3, ledBackward);
         doorState = doorOpening;
@@ -400,7 +399,7 @@ swTrigger = HIGH;
         motorFree();
         setLeds1(red, ledSolid);
         doorState = doorBlocked;
-swTrigger = HIGH;
+        swTrigger = HIGH;
         break;
       }
 
@@ -428,7 +427,7 @@ swTrigger = HIGH;
         debug(currentMillis, F("Total ms: "));
         Serial.println(driveTotalMillis);
         openMillis = 0;
-        setLeds1(green, ledFade);
+        setLeds1(green, ledSolid);
         doorState = doorOpen;
         break;
       }
@@ -451,7 +450,7 @@ swTrigger = HIGH;
         debug(currentMillis, F("Button switch triggered - door blocked\r\n"));
         setLeds1(red, ledSolid);
         doorState = doorBlocked;
-swTrigger = HIGH;
+        swTrigger = HIGH;
         break;
       }
 
@@ -526,7 +525,7 @@ swTrigger = HIGH;
           doorState = doorOpening;
         }
         setLeds2(white, black, 3, ledMode);
-swTrigger = HIGH;
+        swTrigger = HIGH;
       }
       break;
 
@@ -635,20 +634,21 @@ inline void debug(const unsigned long timestamp, const __FlashStringHelper *cons
 }
 
 //__attribute__((always_inline))
-inline void debounce(const int swPin, bool *const swVal, uint16_t *const swDebounce) {
+inline void debounce(const int swPin, bool *const swVal, bool *const swDeglitch, uint16_t *const swDebounce) {
   // similiar to what digitalRead() does, assumes that swPin has no timer output assigned
   // this still leads to several indirect lookups per sample. direct PINx access might be faster
-  debounce(portInputRegister(digitalPinToPort(swPin)), digitalPinToBitMask(swPin), swVal, swDebounce);
+  debounce(portInputRegister(digitalPinToPort(swPin)), digitalPinToBitMask(swPin), swVal, swDeglitch, swDebounce);
 }
 
 //__attribute__((always_inline))
-inline void debounce(const volatile uint8_t *const port, const uint8_t pinMask, bool *const swVal, uint16_t *const swDebounce) {
+inline void debounce(const volatile uint8_t *const port, const uint8_t pinMask, bool *const swVal, bool *const swDeglitch, uint16_t *const swDebounce) {
   // NB: interference near multiples of 1/interval could cause spurious edges
   *swDebounce = ((*swDebounce << 1) | ((*port & pinMask)?(1):(0))) & 0x1FFF; // 13-bit debounce
-  if (*swDebounce == 0x1000) { // edge HIGH -> 12xLOW
-    *swVal = LOW;
-  } else if (*swDebounce == 0x0FFF) { // edge LOW -> 12xHIGH
-    *swVal = HIGH;
+
+  if (*swDebounce == 0x1000 && *swDeglitch == HIGH) { // edge HIGH -> 12xLOW
+    *swVal = *swDeglitch = LOW;
+  } else if (*swDebounce == 0x0FFF && *swDeglitch == LOW) { // edge LOW -> 12xHIGH
+    *swVal = *swDeglitch = HIGH;
   }
 }
 
