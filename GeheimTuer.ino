@@ -360,7 +360,9 @@ if (Serial.available()) {
     case 'F':
         swFront = HIGH; break;
     case 'm':
-        Serial.println(currentMillis); break;
+        debug(currentMillis, F("Door status: "));
+        Serial.println(doorState);
+        break;
     case 'h':
       motorDisable();
       doorState = doorError;
@@ -395,8 +397,8 @@ if (Serial.available()) {
     case doorOpen:
       // hold the door open if button pressed during openInterval
       if (swTrigger == LOW) {
-        debug(currentMillis, F("Button switch triggered - door blocked\r\n"));
         motorFree();
+        debug(currentMillis, F("Button switch triggered - door blocked\r\n"));
         setLeds1(red, ledSolid);
         doorState = doorBlocked;
         swTrigger = HIGH;
@@ -691,7 +693,7 @@ void motorDisable() {
 }
 
 void motorEnable() {
-  // return control to pull-ups on the driver2 board
+  // return control to pull-ups on the driver board
   pinMode(motorDiagAPin, INPUT);
   pinMode(motorDiagBPin, INPUT);
   Serial.print(F("Motor driver enabled\r\n"));
