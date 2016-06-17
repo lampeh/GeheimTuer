@@ -671,7 +671,7 @@ inline void initDrive(const int dir, const struct accelProfile *const profile) {
   drivePWM = accelProfile[0].startPWM;
   driveMillis = driveStepMillis = driveTotalMillis = 0;
 
-  switch(dir) {
+  switch(motorDir) {
     case forward:
       motorForward(); break;
     case backward:
