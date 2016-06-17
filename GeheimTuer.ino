@@ -112,8 +112,8 @@ const struct accelProfile accelProfileHigh[] = {
     brake: false
   },
   { // accelerate and keep running
-    maxMillis: 2000,
-    stepMillis: 5,
+    maxMillis: 1900,
+    stepMillis: 4,
     factor: 1,
     add: 1,
     minPWM: 0,
@@ -213,7 +213,7 @@ unsigned long debounceMillis = 0;
 // TODO: use structured profiles
 const unsigned long ledSolidInterval = 250; // constantly update LED stripe in solid mode
 const unsigned long ledFadeInterval = 20;
-const unsigned long ledBlinkInterval = 1000;
+const unsigned long ledBlinkInterval = 500;
 const unsigned long ledMoveInterval = 250; // shift LED window every X ms
 unsigned long ledMillis = 0;
 
@@ -427,7 +427,7 @@ if (Serial.available()) {
         debug(currentMillis, F("Total ms: "));
         Serial.println(driveTotalMillis);
         openMillis = 0;
-        setLeds1(green, ledSolid);
+        setLeds1(green, ledBlink);
         doorState = doorOpen;
         break;
       }
