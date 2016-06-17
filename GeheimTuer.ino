@@ -48,6 +48,7 @@ const cRGB blue = {g: 0x00, r: 0x00, b: 0x1F};
   }\
   memset(&ledState, 0x00, sizeof(ledState));\
   ledMode = (mode);\
+ledMoveInterval = 250;\
 }
 
 
@@ -214,7 +215,8 @@ unsigned long debounceMillis = 0;
 const unsigned long ledSolidInterval = 250; // constantly update LED stripe in solid mode
 const unsigned long ledFadeInterval = 20;
 const unsigned long ledBlinkInterval = 500;
-const unsigned long ledMoveInterval = 250; // shift LED window every X ms
+//const unsigned long ledMoveInterval = 250; // shift LED window every X ms
+unsigned long ledMoveInterval; // shift LED window every X ms - varied by drivePWM
 unsigned long ledMillis = 0;
 
 bool swFront, swBack, swTrigger, motorDiagA, motorDiagB; // debounced inputs
@@ -504,9 +506,14 @@ if (Serial.available()) {
                         (drivePWM + accelProfile[accelProfileIdx].add) * accelProfile[accelProfileIdx].factor));
 
         debug(currentMillis, F("Drive PWM: "));
-        Serial.println(drivePWM);
+        Serial.print(drivePWM);
 
         analogWrite(motorPWMPin, round(drivePWM*drivePWMscale));
+
+ledMoveInterval = 50 + ((1-(drivePWM/255))*200);
+Serial.print(F(", ledMoveInterval: "));
+Serial.println(ledMoveInterval);
+
       }
       break;
 
