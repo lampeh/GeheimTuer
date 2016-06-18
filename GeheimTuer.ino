@@ -2,7 +2,7 @@
 
 /* config */
 
-// MAXPIX+EXTRAPIX must fit into uint8_t
+// MAXPIX must fit uint8_t loop variable in ledFade, ledBlink
 #define MAXPIX 20  // LED stripe length
 #define EXTRAPIX 3 // animation buffer, read window moves back and forth EXTRAPIX pixels
 
@@ -18,7 +18,7 @@ const int motorInAPin = 7;
 const int motorInBPin = 8;
 const int motorPWMPin = 9;
 
-// switch inputs, active-low
+// end-stop switches, active-low
 const int switchFront = 3; // front is at the closed position
 const int switchFrontIRQ = 1; // TODO: maybe use interrupts & sleep
 
@@ -33,61 +33,6 @@ const int pirPin = 12;
 
 // on-board status LED
 const int statusLED = 13;
-
-
-/* WS2812 LEDs */
-
-cRGB leds[MAXPIX+EXTRAPIX];
-cRGB tmp_leds[MAXPIX]; // temp array for fading and blinking
-cRGB *ledptr; // read pointer for WS2812 library, points to start of window
-
-// requires custom changes to accept uint8_t** argument
-WS2812 LED(MAXPIX, &ledptr);
-
-enum ledModes { ledSolid, ledFade, ledBlink, ledForward, ledBackward } ledMode;
-
-// mode-dependent state
-union ledState { 
-  unsigned int ledidx;
-  signed int fader;
-  bool blink_on;
-} ledState;
-
-// pre-defined colors. GRB order, g++ doesn't implement out-of-order initializers
-const cRGB traktor = {g: 0xB8/7, r: 0x67/7, b: 0xDC/7}; // https://wiki.attraktor.org/Corporate_Identity
-const cRGB black = {g: 0x00, r: 0x00, b: 0x00};
-const cRGB white = {g: 0x1F, r: 0x1F, b: 0x1F};
-const cRGB red = {g: 0x00, r: 0x1F, b: 0x00};
-const cRGB yellow = {g: 0x1F, r: 0x1F, b: 0x00};
-const cRGB green = {g: 0x1F, r: 0x00, b: 0x00};
-const cRGB blue = {g: 0x00, r: 0x00, b: 0x1F};
-
-// macro instead of inline function. TODO: compare generated code again
-// fill LED buffer with solid color, reset state, set mode
-#define setLeds1(color1, mode) {\
-  for (uint8_t i = 0; i < MAXPIX+EXTRAPIX; i++) {\
-    leds[i] = (color1);\
-  }\
-  memset(&ledState, 0x00, sizeof(ledState));\
-  ledMode = (mode);\
-}
-
-// fill LED buffer with alternating colors every modulo pixels, reset state, set mode
-#define setLeds2(color1, color2, modulo, mode) {\
-  for (uint8_t i = 0; i < MAXPIX+EXTRAPIX; i++) {\
-    leds[i] = (i % (modulo)) ? ((color2)) : ((color1));\
-  }\
-  memset(&ledState, 0x00, sizeof(ledState));\
-  ledMode = (mode);\
-ledMoveInterval = 250;\
-}
-
-
-/* motor driver */
-
-// global motor direction variable, required for PWM-brake & coasting
-// TODO: PWM-brake is never used, maybe refactor & remove
-enum motorDir { forward, backward } motorDir;
 
 // ad-hoc acceleration profile
 // TODO: self-calibration by means of driveTotalMillis
@@ -199,8 +144,63 @@ const struct accelProfile accelProfileHigh[] = {
   },
 */
 
+
+/* motor driver */
+
+// global motor direction variable, required for PWM-brake & coasting
+// TODO: PWM-brake is never used, maybe refactor & remove
+enum motorDir { forward, backward } motorDir;
+
 const struct accelProfile *accelProfile; // pointer to current profile
 int accelProfileIdx = 0;
+
+
+/* WS2812 LEDs */
+
+cRGB leds[MAXPIX+EXTRAPIX];
+cRGB tmp_leds[MAXPIX]; // temp array for fading and blinking
+cRGB *ledptr; // read pointer for WS2812 library, points to start of window
+
+// requires custom changes to accept uint8_t** argument
+WS2812 LED(MAXPIX, &ledptr);
+
+enum ledModes { ledSolid, ledFade, ledBlink, ledForward, ledBackward } ledMode;
+
+// mode-dependent state
+union ledState {
+  unsigned int ledidx;
+  signed int fader;
+  bool blink_on;
+} ledState;
+
+// pre-defined colors. GRB order, g++ doesn't implement out-of-order initializers
+const cRGB traktor = {g: 0xB8/7, r: 0x67/7, b: 0xDC/7}; // https://wiki.attraktor.org/Corporate_Identity
+const cRGB black = {g: 0x00, r: 0x00, b: 0x00};
+const cRGB white = {g: 0x1F, r: 0x1F, b: 0x1F};
+const cRGB red = {g: 0x00, r: 0x1F, b: 0x00};
+const cRGB yellow = {g: 0x1F, r: 0x1F, b: 0x00};
+const cRGB green = {g: 0x1F, r: 0x00, b: 0x00};
+const cRGB blue = {g: 0x00, r: 0x00, b: 0x1F};
+
+// macro instead of inline function. TODO: compare generated code again
+// fill LED buffer with solid color, reset state, set mode
+#define setLeds1(color1, mode) {\
+  for (uint8_t i = 0; i < MAXPIX+EXTRAPIX; i++) {\
+    leds[i] = (color1);\
+  }\
+  memset(&ledState, 0x00, sizeof(ledState));\
+  ledMode = (mode);\
+}
+
+// fill LED buffer with alternating colors every modulo pixels, reset state, set mode
+#define setLeds2(color1, color2, modulo, mode) {\
+  for (uint8_t i = 0; i < MAXPIX+EXTRAPIX; i++) {\
+    leds[i] = (i % (modulo)) ? ((color2)) : ((color1));\
+  }\
+  memset(&ledState, 0x00, sizeof(ledState));\
+  ledMode = (mode);\
+ledMoveInterval = 250;\
+}
 
 
 /* unsorted variables below. TODO: refactor & cleanup */
@@ -649,7 +649,7 @@ if (motorDiagA == HIGH && motorDiagB == HIGH) {
         ledMillis = 0;
 
         if (!ledState.blink_on) {
-  //          memset(&tmp_leds, 0x00, sizeof(tmp_leds));
+//          memset(&tmp_leds, 0x00, sizeof(tmp_leds));
           for (uint8_t i = 0; i < MAXPIX; i++) {
             tmp_leds[i] = black;
           }
