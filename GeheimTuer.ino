@@ -28,7 +28,7 @@ const int switchBack = 4;
 const int switchTrigger = 2;
 const int switchTriggerIRQ = 0;
 
-// PIR sensor
+// PIR sensor, active-high
 const int pirPin = 12;
 
 // on-board status LED
@@ -36,6 +36,7 @@ const int statusLED = 13;
 
 // ad-hoc acceleration profile
 // TODO: self-calibration by means of driveTotalMillis
+// TODO: sense & limit motor current
 struct accelProfile {
   unsigned long maxMillis; // time until next step, 0 == end of profile
   unsigned long stepMillis; // modify PWM value every stepMillis ms
@@ -57,7 +58,7 @@ const struct accelProfile accelProfileLow[] = {
     add: 4,
     minPWM: 0,
     maxPWM: 64,
-    startPWM: 0,
+    startPWM: 1,
     useStartPWM: true,
     brake: false
   },
@@ -68,6 +69,7 @@ const struct accelProfile accelProfileLow[] = {
 
 // normal operation
 // try accelerating as fast as possible without skipping belt teeth
+// belt tension limits torque. important safety feature
 // TODO: install less stiff spring between belt and door to dampen the initial pull
 const struct accelProfile accelProfileHigh[] = {
   { // slow start
@@ -77,7 +79,7 @@ const struct accelProfile accelProfileHigh[] = {
     add: 1,
     minPWM: 0,
     maxPWM: 255,
-    startPWM: 0,
+    startPWM: 1,
     useStartPWM: true, // first element always sets initial PWM value
     brake: false
   },
@@ -208,16 +210,16 @@ ledMoveInterval = 250;\
 // buttons & switches do different things in different states
 enum doorStates { doorClosed, doorOpening, doorOpen, doorClosing, doorBlocked, doorBlockedPir, doorError } doorState;
 
-double drivePWM = 0;
+double drivePWM;
 const double drivePWMscale = 1; // fiddling aid, constant factor applied to calculated PWM value. TODO: update profile & remove
 
 // TODO: the timing system has some quirks. think again or document
 
 unsigned long lastMillis = 0; // last loop's millis() result
 
-unsigned long driveMillis = 0;
-unsigned long driveStepMillis = 0;
-unsigned long driveTotalMillis = 0;
+unsigned long driveMillis;
+unsigned long driveProfileMillis;
+unsigned long driveTotalMillis;
 
 const unsigned long openInterval = 3000; // ms before the door closes again, unless blocked by button
 unsigned long openMillis = 0;
@@ -232,6 +234,8 @@ const unsigned long ledBlinkInterval = 500;
 //const unsigned long ledMoveInterval = 250; // shift LED window every X ms
 unsigned long ledMoveInterval; // shift LED window every X ms - varied by drivePWM
 unsigned long ledMillis = 0;
+const unsigned int ledMoveMin = 50; // minimum move interval if drivePWM == 255
+const unsigned int ledMoveMax = 305; // maximum move interval if drivePWM == 0
 
 bool swFront, swBack, swTrigger, motorDiagA, motorDiagB, pirTrigger; // debounced inputs
 bool swFrontDeglitch, swBackDeglitch, swTriggerDeglitch, motorDiagADeglitch, motorDiagBDeglitch, pirDeglitch; // TODO: quick hack. document
@@ -404,16 +408,16 @@ if (Serial.available()) {
   switch(doorState) {
     case doorClosed:
       // wait until a button is pressed or the front switch opens
-      if (swFront == HIGH || swTrigger == LOW) {
-        if (swFront == HIGH) {
+      if (swTrigger == LOW || swFront == HIGH) {
+        if (swTrigger == LOW) {
+          debug(currentMillis, F("Button switch triggered - opening door\r\n"));
+          initDrive(backward, accelProfileHigh);
+          swTrigger = HIGH; // re-arm swTrigger
+        } else {
           // maybe someone tried to pull the door open
           // TODO: or the door slams too fast into the end-stop and rebounds. align profile & inertial reality
           debug(currentMillis, F("Front switch triggered - opening door\r\n"));
           initDrive(backward, accelProfileLow);
-        } else {
-          debug(currentMillis, F("Button switch triggered - opening door\r\n"));
-          initDrive(backward, accelProfileHigh);
-          swTrigger = HIGH; // re-arm swTrigger
         }
         setLeds2(white, black, EXTRAPIX, ledBackward);
         doorState = doorOpening;
@@ -431,12 +435,13 @@ if (Serial.available()) {
         break;
       }
 
-if (pirTrigger == HIGH) {
-  debug(currentMillis, F("Motion sensor triggered - door blocked by PIR\r\n"));
-  setLeds1(yellow, ledBlink);
-  doorState = doorBlockedPir;
-  break;
-}
+      // reset timeout while sensor input is HIGH
+      if (pirTrigger == HIGH) {
+        debug(currentMillis, F("Motion sensor triggered - door blocked by PIR\r\n"));
+        setLeds1(yellow, ledBlink);
+        doorState = doorBlockedPir;
+        break;
+      }
 
       openMillis += elapsedMillis;
       if (openMillis >= openInterval || swBack == HIGH) {
@@ -490,14 +495,14 @@ if (pirTrigger == HIGH) {
       }
 
       driveTotalMillis += elapsedMillis;
-      driveStepMillis += elapsedMillis;
-      if (driveStepMillis >= accelProfile[accelProfileIdx].stepMillis) {
-        driveMillis += driveStepMillis;
-        driveStepMillis = 0;
+      driveMillis += elapsedMillis;
+      if (driveMillis >= accelProfile[accelProfileIdx].stepMillis) {
+        driveProfileMillis += driveMillis;
+        driveMillis = 0;
 
         // switch to next profile step
-        if (driveMillis >= accelProfile[accelProfileIdx].maxMillis) {
-          driveMillis = 0;
+        if (driveProfileMillis >= accelProfile[accelProfileIdx].maxMillis) {
+          driveProfileMillis = 0;
           accelProfileIdx++;
 
           // end-stop not reached at end of profile, someone might be in the way
@@ -541,7 +546,7 @@ if (pirTrigger == HIGH) {
 
         analogWrite(motorPWMPin, round(drivePWM*drivePWMscale));
 
-ledMoveInterval = 50 + ((1-(drivePWM/255))*200);
+ledMoveInterval = ledMoveMin + ((255-drivePWM)*((double)(ledMoveMax-ledMoveMin)/255));
 Serial.print(F(", ledMoveInterval: "));
 Serial.println(ledMoveInterval);
 
@@ -549,20 +554,8 @@ Serial.println(ledMoveInterval);
       break;
 
     case doorBlockedPir:
+      // motion stopped, return to work
       if (pirTrigger == LOW) {
-
-// hold the door open if button pressed
-// TODO: another possibility would be to fall-through to doorBlocked
-// and close the door instead. which way is better?
-if (swTrigger == LOW) {
-  motorFree();
-  debug(currentMillis, F("Button switch triggered - door blocked\r\n"));
-  setLeds1(red, ledSolid);
-  doorState = doorBlocked;
-  swTrigger = HIGH;
-  break;
-}
-
         if (swBack == LOW) {
           debug(currentMillis, F("IR sensor LOW - door open\r\n"));
           openMillis = 0;
@@ -573,6 +566,16 @@ if (swTrigger == LOW) {
           setLeds1(red, ledSolid);
           doorState = doorBlocked;
         }
+      }
+      // hold the door open if button pressed
+      // TODO: another possibility would be to fall-through to doorBlocked
+      // and close the door instead. which way is better?
+      if (swTrigger == LOW) {
+        motorFree();
+        debug(currentMillis, F("Button switch triggered - door blocked\r\n"));
+        setLeds1(red, ledSolid);
+        doorState = doorBlocked;
+        swTrigger = HIGH;
       }
       break;
 
@@ -728,7 +731,7 @@ inline void initDrive(const int dir, const struct accelProfile *const profile) {
   accelProfile = profile;
   accelProfileIdx = 0;
   drivePWM = accelProfile[0].startPWM;
-  driveMillis = driveStepMillis = driveTotalMillis = 0;
+  driveMillis = driveProfileMillis = driveTotalMillis = 0;
 
   switch(motorDir) {
     case forward:
