@@ -1,11 +1,38 @@
 #include <WS2812.h>
 
+/* config */
+
 // MAXPIX+EXTRAPIX must fit into uint8_t
 #define MAXPIX 20  // LED stripe length
 #define EXTRAPIX 3 // animation buffer, read window moves back and forth EXTRAPIX pixels
 
-// WS2812 output
+// on-board status LED
+const int statusLED = 13;
+
+// WS2812 data
 const int ledPin = 11;
+
+// I/O connections to bridge driver module
+// https://www.olimex.com/Products/RobotParts/MotorDrivers/BB-VNH3SP30/
+// https://www.olimex.com/Products/RobotParts/MotorDrivers/BB-VNH3SP30/resources/BB-VNH3SP30_schematic.pdf
+const int motorDiagAPin = 5;
+const int motorDiagBPin = 6;
+const int motorInAPin = 7;
+const int motorInBPin = 8;
+const int motorPWMPin = 9;
+
+// switch inputs, active-low
+const int switchFront = 3; // front is at the closed position
+const int switchFrontIRQ = 1; // TODO: maybe use interrupts & sleep
+
+const int switchBack = 4;
+
+// wire-ORed buttons, active-low
+const int switchTrigger = 2;
+const int switchTriggerIRQ = 0;
+
+
+/* WS2812 LEDs */
 
 cRGB leds[MAXPIX+EXTRAPIX];
 cRGB tmp_leds[MAXPIX]; // temp array for fading and blinking
@@ -29,6 +56,7 @@ const cRGB black = {g: 0x00, r: 0x00, b: 0x00};
 const cRGB white = {g: 0x1F, r: 0x1F, b: 0x1F};
 const cRGB red = {g: 0x00, r: 0x1F, b: 0x00};
 const cRGB green = {g: 0x1F, r: 0x00, b: 0x00};
+const cRGB yellow = {g: 0x1F, r: 0x1F, b: 0x00};
 const cRGB blue = {g: 0x00, r: 0x00, b: 0x1F};
 
 // macro instead of inline function. TODO: compare generated code again
@@ -52,18 +80,11 @@ ledMoveInterval = 250;\
 }
 
 
+/* motor driver */
+
 // global motor direction variable, required for PWM-brake & coasting
 // TODO: PWM-brake is never used, maybe refactor & remove
 enum motorDir { forward, backward } motorDir;
-
-// I/O connections to bridge driver module
-// https://www.olimex.com/Products/RobotParts/MotorDrivers/BB-VNH3SP30/
-// https://www.olimex.com/Products/RobotParts/MotorDrivers/BB-VNH3SP30/resources/BB-VNH3SP30_schematic.pdf
-const int motorDiagAPin = 5;
-const int motorDiagBPin = 6;
-const int motorInAPin = 7;
-const int motorInBPin = 8;
-const int motorPWMPin = 9;
 
 // ad-hoc acceleration profile
 // TODO: self-calibration by means of driveTotalMillis
@@ -178,18 +199,8 @@ const struct accelProfile accelProfileHigh[] = {
 const struct accelProfile *accelProfile; // pointer to current profile
 int accelProfileIdx = 0;
 
-// switch inputs, active-low
-const int switchFront = 3; // front is at the closed position
-const int switchFrontIRQ = 1; // TODO: maybe use interrupts & sleep
 
-const int switchBack = 4;
-
-// wire-ORed buttons, active-low
-const int switchTrigger = 2;
-const int switchTriggerIRQ = 0;
-
-
-// unsorted variables below. TODO: refactor & cleanup
+/* unsorted variables below. TODO: refactor & cleanup */
 
 // buttons & switches do different things in different states
 enum doorStates { doorClosed, doorOpening, doorOpen, doorClosing, doorBlocked, doorError } doorState;
@@ -225,6 +236,9 @@ uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce,
 
 
 void setup() {
+  pinMode(statusLED, OUTPUT);
+  digitalWrite(statusLED, HIGH);
+
   Serial.begin(115200);
   Serial.print(F("\r\nDoor control init\r\n"));
 
@@ -294,12 +308,10 @@ setPwmFrequency(motorPWMPin, 1);
     setLeds1(red, ledBlink);
   }
 
-// TODO: on-board status LEDs, independent of ws2812
-digitalWrite(13, LOW);
-pinMode(13, OUTPUT);
-
 //  attachInterrupt(switchFrontIRQ, switchFrontInterrupt, CHANGE);
 //  attachInterrupt(switchTriggerIRQ, switchTriggerInterrupt, FALLING);
+
+  digitalWrite(statusLED, LOW);
 }
 
 void loop() {
@@ -373,6 +385,13 @@ if (Serial.available()) {
       motorEnable();
       doorState = doorBlocked;
       break;
+    case 'k': {
+      const cRGB white255 = {g: 0xFF, r: 0xFF, b: 0xFF};
+      setLeds1(white255, ledSolid);
+      break; }
+    case 'K':
+      setLeds1(black, ledSolid);
+      break;
   }
 }
 
@@ -391,7 +410,7 @@ if (Serial.available()) {
           initDrive(backward, accelProfileHigh);
           swTrigger = HIGH; // re-arm swTrigger
         }
-        setLeds2(white, black, 3, ledBackward);
+        setLeds2(white, black, EXTRAPIX, ledBackward);
         doorState = doorOpening;
       }
       break;
@@ -418,7 +437,7 @@ if (Serial.available()) {
           debug(currentMillis, F("openInterval timeout - closing door\r\n"));
           initDrive(forward, accelProfileHigh);
         }
-        setLeds2(white, black, 3, ledForward);
+        setLeds2(white, black, EXTRAPIX, ledForward);
         doorState = doorClosing;
       }
       break;
@@ -533,7 +552,7 @@ Serial.println(ledMoveInterval);
           ledMode = ledBackward;
           doorState = doorOpening;
         }
-        setLeds2(white, black, 3, ledMode);
+        setLeds2(white, black, EXTRAPIX, ledMode);
         swTrigger = HIGH;
       }
       break;
@@ -546,9 +565,9 @@ Serial.println(ledMoveInterval);
 if (motorDiagA == HIGH && motorDiagB == HIGH) {
   setLeds1(red, ledSolid);
   doorState = doorBlocked;
-  digitalWrite(13, LOW);
+  digitalWrite(statusLED, LOW);
 } else {
-  digitalWrite(13, HIGH);
+  digitalWrite(statusLED, HIGH);
 }
       break;
   }
@@ -778,7 +797,7 @@ void _motorBackward() {
  * PWM frequency divisors. His post can be viewed at:
  *   http://forum.arduino.cc/index.php?topic=16612#msg121031
  */
-void setPwmFrequency(int pin, int divisor) {
+void setPwmFrequency(const int pin, const int divisor) {
   byte mode;
   if(pin == 5 || pin == 6 || pin == 9 || pin == 10) {
     switch(divisor) {
