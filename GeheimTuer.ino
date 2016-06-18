@@ -6,9 +6,6 @@
 #define MAXPIX 20  // LED stripe length
 #define EXTRAPIX 3 // animation buffer, read window moves back and forth EXTRAPIX pixels
 
-// on-board status LED
-const int statusLED = 13;
-
 // WS2812 data
 const int ledPin = 11;
 
@@ -31,6 +28,12 @@ const int switchBack = 4;
 const int switchTrigger = 2;
 const int switchTriggerIRQ = 0;
 
+// PIR sensor
+const int pirPin = 12;
+
+// on-board status LED
+const int statusLED = 13;
+
 
 /* WS2812 LEDs */
 
@@ -51,12 +54,12 @@ union ledState {
 } ledState;
 
 // pre-defined colors. GRB order, g++ doesn't implement out-of-order initializers
-const cRGB traktor = {g: 0xB8/4, r: 0x67/4, b: 0xDC/4}; // https://wiki.attraktor.org/Corporate_Identity
+const cRGB traktor = {g: 0xB8/7, r: 0x67/7, b: 0xDC/7}; // https://wiki.attraktor.org/Corporate_Identity
 const cRGB black = {g: 0x00, r: 0x00, b: 0x00};
 const cRGB white = {g: 0x1F, r: 0x1F, b: 0x1F};
 const cRGB red = {g: 0x00, r: 0x1F, b: 0x00};
-const cRGB green = {g: 0x1F, r: 0x00, b: 0x00};
 const cRGB yellow = {g: 0x1F, r: 0x1F, b: 0x00};
+const cRGB green = {g: 0x1F, r: 0x00, b: 0x00};
 const cRGB blue = {g: 0x00, r: 0x00, b: 0x1F};
 
 // macro instead of inline function. TODO: compare generated code again
@@ -69,7 +72,7 @@ const cRGB blue = {g: 0x00, r: 0x00, b: 0x1F};
   ledMode = (mode);\
 }
 
-// fill LED buffer with alternating colors every $modulo pixels, reset state, set mode
+// fill LED buffer with alternating colors every modulo pixels, reset state, set mode
 #define setLeds2(color1, color2, modulo, mode) {\
   for (uint8_t i = 0; i < MAXPIX+EXTRAPIX; i++) {\
     leds[i] = (i % (modulo)) ? ((color2)) : ((color1));\
@@ -203,7 +206,7 @@ int accelProfileIdx = 0;
 /* unsorted variables below. TODO: refactor & cleanup */
 
 // buttons & switches do different things in different states
-enum doorStates { doorClosed, doorOpening, doorOpen, doorClosing, doorBlocked, doorError } doorState;
+enum doorStates { doorClosed, doorOpening, doorOpen, doorClosing, doorBlocked, doorBlockedPir, doorError } doorState;
 
 double drivePWM = 0;
 const double drivePWMscale = 1; // fiddling aid, constant factor applied to calculated PWM value. TODO: update profile & remove
@@ -230,9 +233,9 @@ const unsigned long ledBlinkInterval = 500;
 unsigned long ledMoveInterval; // shift LED window every X ms - varied by drivePWM
 unsigned long ledMillis = 0;
 
-bool swFront, swBack, swTrigger, motorDiagA, motorDiagB; // debounced inputs
-bool swFrontDeglitch, swBackDeglitch, swTriggerDeglitch, motorDiagADeglitch, motorDiagBDeglitch; // TODO: quick hack. document
-uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce, motorDiagBDebounce; // debounce shift registers
+bool swFront, swBack, swTrigger, motorDiagA, motorDiagB, pirTrigger; // debounced inputs
+bool swFrontDeglitch, swBackDeglitch, swTriggerDeglitch, motorDiagADeglitch, motorDiagBDeglitch, pirDeglitch; // TODO: quick hack. document
+uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce, motorDiagBDebounce, pirDebounce; // debounce shift registers
 
 
 void setup() {
@@ -273,6 +276,7 @@ setPwmFrequency(motorPWMPin, 1);
   swFrontDebounce = (swFront = swFrontDeglitch = digitalRead(switchFront)) * 0xFFFF;
   swBackDebounce = (swBack = swBackDeglitch = digitalRead(switchBack)) * 0xFFFF;
   swTriggerDebounce = (swTrigger = swTriggerDeglitch = digitalRead(switchTrigger)) * 0xFFFF;
+  pirDebounce = (pirTrigger = pirDeglitch = digitalRead(pirPin)) * 0xFFFF;
 
   Serial.print(F("Door status: "));
 
@@ -354,6 +358,7 @@ void loop() {
     debounce(switchTrigger, &swTrigger, &swTriggerDeglitch, &swTriggerDebounce);
     debounce(switchFront, &swFront, &swFrontDeglitch, &swFrontDebounce);
     debounce(switchBack, &swBack, &swBackDeglitch, &swBackDebounce);
+    debounce(pirPin, &pirTrigger, &pirDeglitch, &pirDebounce);
   }
 
 
@@ -425,6 +430,13 @@ if (Serial.available()) {
         swTrigger = HIGH;
         break;
       }
+
+if (pirTrigger == HIGH) {
+  debug(currentMillis, F("Motion sensor triggered - door blocked by PIR\r\n"));
+  setLeds1(yellow, ledBlink);
+  doorState = doorBlockedPir;
+  break;
+}
 
       openMillis += elapsedMillis;
       if (openMillis >= openInterval || swBack == HIGH) {
@@ -533,6 +545,34 @@ ledMoveInterval = 50 + ((1-(drivePWM/255))*200);
 Serial.print(F(", ledMoveInterval: "));
 Serial.println(ledMoveInterval);
 
+      }
+      break;
+
+    case doorBlockedPir:
+      if (pirTrigger == LOW) {
+
+// hold the door open if button pressed
+// TODO: another possibility would be to fall-through to doorBlocked
+// and close the door instead. which way is better?
+if (swTrigger == LOW) {
+  motorFree();
+  debug(currentMillis, F("Button switch triggered - door blocked\r\n"));
+  setLeds1(red, ledSolid);
+  doorState = doorBlocked;
+  swTrigger = HIGH;
+  break;
+}
+
+        if (swBack == LOW) {
+          debug(currentMillis, F("IR sensor LOW - door open\r\n"));
+          openMillis = 0;
+          setLeds1(green, ledBlink);
+          doorState = doorOpen;
+        } else {
+          debug(currentMillis, F("IR sensor LOW - door blocked\r\n"));
+          setLeds1(red, ledSolid);
+          doorState = doorBlocked;
+        }
       }
       break;
 
