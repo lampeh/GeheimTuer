@@ -288,34 +288,35 @@ setPwmFrequency(motorPWMPin, 1);
 
   if (swTrigger == LOW || (swFront == LOW && swBack == LOW)) {
     doorState = doorError;
+    setLeds1(red, ledBlink);
     Serial.print(F("ERROR\r\n"));
   } else if (swFront == LOW) {
     doorState = doorClosed;
+    setLeds1(green, ledFade);
     Serial.print(F("closed\r\n"));
   } else if (swBack == LOW) {
     doorState = doorOpen;
+    setLeds1(green, ledBlink);
     Serial.print(F("open\r\n"));
   } else {
     doorState = doorBlocked;
+    setLeds1(red, ledSolid);
     Serial.print(F("blocked\r\n"));
   }
 
   if (doorState != doorError) {
+    if (doorState != doorBlocked) {
+      motorBrake();
+    } else {
+      motorFree();
+    }
+
     // enable driver
     motorEnable();
 
     // diag pull-ups should have brought the lines up by now
     motorDiagADebounce = (motorDiagA = motorDiagADeglitch = digitalRead(motorDiagAPin)) * 0xFFFF;
     motorDiagBDebounce = (motorDiagB = motorDiagBDeglitch = digitalRead(motorDiagBPin)) * 0xFFFF;
-
-    if (doorState != doorBlocked) {
-      motorBrake();
-    } else {
-      motorFree();
-      setLeds1(red, ledSolid);
-    }
-  } else {
-    setLeds1(red, ledBlink);
   }
 
 //  attachInterrupt(switchFrontIRQ, switchFrontInterrupt, CHANGE);
