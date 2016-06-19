@@ -172,7 +172,7 @@ enum ledModes { ledSolid, ledFade, ledBlink, ledForward, ledBackward } ledMode;
 union ledState {
   unsigned int ledidx;
   signed int fader;
-  bool blink_on;
+  bool blink_off;
 } ledState;
 
 // pre-defined colors. GRB order, g++ doesn't implement out-of-order initializers
@@ -271,6 +271,8 @@ setPwmFrequency(motorPWMPin, 1);
 
   pinMode(switchTrigger, INPUT_PULLUP);
 
+  pinMode(pirPin, INPUT);
+
   setLeds1(traktor, ledSolid);
   ledptr = &leds[0];
   LED.setOutput(ledPin);
@@ -341,7 +343,6 @@ void loop() {
   Serial.println(elapsedMillis);
 */
 
-
   // fast debounce driver error signals to filter short glitches
   debounce(motorDiagAPin, &motorDiagA, &motorDiagADeglitch, &motorDiagADebounce);
   debounce(motorDiagBPin, &motorDiagB, &motorDiagBDeglitch, &motorDiagBDebounce);
@@ -382,6 +383,10 @@ if (Serial.available()) {
         swFront = LOW; break;
     case 'F':
         swFront = HIGH; break;
+    case 'i':
+        pirTrigger = HIGH; break;
+    case 'I':
+        pirTrigger = LOW; break;
     case 'm':
         debug(currentMillis, F("Door status: "));
         Serial.println(doorState);
@@ -557,12 +562,12 @@ Serial.println(ledMoveInterval);
       // motion stopped, return to work
       if (pirTrigger == LOW) {
         if (swBack == LOW) {
-          debug(currentMillis, F("IR sensor LOW - door open\r\n"));
+          debug(currentMillis, F("Motion sensor released - door open\r\n"));
           openMillis = 0;
           setLeds1(green, ledBlink);
           doorState = doorOpen;
         } else {
-          debug(currentMillis, F("IR sensor LOW - door blocked\r\n"));
+          debug(currentMillis, F("Motion sensor released - door blocked\r\n"));
           setLeds1(red, ledSolid);
           doorState = doorBlocked;
         }
@@ -651,17 +656,17 @@ if (motorDiagA == HIGH && motorDiagB == HIGH) {
       if (ledMillis >= ledBlinkInterval) {
         ledMillis = 0;
 
-        if (!ledState.blink_on) {
+        if (!ledState.blink_off) {
+          ledptr = &leds[0];
+        } else {
 //          memset(&tmp_leds, 0x00, sizeof(tmp_leds));
           for (uint8_t i = 0; i < MAXPIX; i++) {
             tmp_leds[i] = black;
           }
           ledptr = &tmp_leds[0];
-        } else {
-          ledptr = &leds[0];
         }
   
-        ledState.blink_on = !ledState.blink_on;
+        ledState.blink_off = !ledState.blink_off;
 
         LED.sync();
       }
@@ -780,7 +785,7 @@ void _motorBrake() {
 
 void motorFree() {
   _motorFree();
-  Serial.print(F("Brake disengaged\r\n"));
+  Serial.print(F("Brake released\r\n"));
 }
 
 void _motorFree() {
