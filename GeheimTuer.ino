@@ -19,6 +19,7 @@ const int motorInBPin = 8;
 const int motorPWMPin = 9;
 
 // end-stop switches, active-low
+// Panasonic AZ7121
 const int switchFront = 3; // front is at the closed position
 const int switchFrontIRQ = 1; // TODO: maybe use interrupts & sleep
 
@@ -29,6 +30,7 @@ const int switchTrigger = 2;
 const int switchTriggerIRQ = 0;
 
 // PIR sensor, active-high
+// based on BIS0001, e.g.: https://learn.adafruit.com/pir-passive-infrared-proximity-motion-sensor/
 const int pirPin = 12;
 
 // on-board status LED
@@ -246,11 +248,17 @@ void setup() {
   pinMode(statusLED, OUTPUT);
   digitalWrite(statusLED, HIGH);
 
-  Serial.begin(115200);
-  Serial.print(F("\r\nDoor control init\r\n"));
-
   // disable driver bridges until setup complete
   motorDisable();
+
+  // initialize WS2812 LEDs
+  setLeds1(traktor, ledSolid);
+  ledptr = &leds[0];
+  LED.setOutput(ledPin);
+  LED.sync();
+
+  Serial.begin(115200);
+  Serial.print(F("\r\nDoor control init\r\n"));
 
   digitalWrite(motorPWMPin, LOW);
   pinMode(motorPWMPin, OUTPUT);
@@ -273,11 +281,6 @@ setPwmFrequency(motorPWMPin, 1);
 
   pinMode(pirPin, INPUT);
 
-  setLeds1(traktor, ledSolid);
-  ledptr = &leds[0];
-  LED.setOutput(ledPin);
-  LED.sync();
-
   // initialize debounce registers, assume steady state
   swFrontDebounce = (swFront = swFrontDeglitch = digitalRead(switchFront)) * 0xFFFF;
   swBackDebounce = (swBack = swBackDeglitch = digitalRead(switchBack)) * 0xFFFF;
@@ -288,7 +291,7 @@ setPwmFrequency(motorPWMPin, 1);
 
   if (swTrigger == LOW || (swFront == LOW && swBack == LOW)) {
     doorState = doorError;
-    setLeds1(red, ledBlink);
+    setLeds1(blue, ledSolid);
     Serial.print(F("ERROR\r\n"));
   } else if (swFront == LOW) {
     doorState = doorClosed;
@@ -325,6 +328,7 @@ setPwmFrequency(motorPWMPin, 1);
   digitalWrite(statusLED, LOW);
 }
 
+
 void loop() {
   unsigned long currentMillis;
   unsigned long elapsedMillis;
@@ -343,6 +347,7 @@ void loop() {
   debug(currentMillis, F("Elapsed millis: "));
   Serial.println(elapsedMillis);
 */
+
 
   // fast debounce driver error signals to filter short glitches
   debounce(motorDiagAPin, &motorDiagA, &motorDiagADeglitch, &motorDiagADebounce);
