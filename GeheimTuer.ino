@@ -58,7 +58,7 @@ const struct accelProfile accelProfileLow[] = {
     add: 4,
     minPWM: 0,
     maxPWM: 64,
-    startPWM: 1,
+    startPWM: 0,
     useStartPWM: true,
     brake: false
   },
@@ -79,7 +79,7 @@ const struct accelProfile accelProfileHigh[] = {
     add: 1,
     minPWM: 0,
     maxPWM: 255,
-    startPWM: 1,
+    startPWM: 0,
     useStartPWM: true, // first element always sets initial PWM value
     brake: false
   },
@@ -737,7 +737,8 @@ inline void initDrive(const int dir, const struct accelProfile *const profile) {
   accelProfile = profile;
   accelProfileIdx = 0;
   drivePWM = accelProfile[0].startPWM;
-  driveMillis = driveProfileMillis = driveTotalMillis = 0;
+  driveProfileMillis = driveTotalMillis = 0;
+  driveMillis = accelProfile[0].stepMillis;
 
   switch(motorDir) {
     case forward:
