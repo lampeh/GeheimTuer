@@ -269,10 +269,10 @@ void setup() {
   digitalWrite(motorInBPin, LOW);
   pinMode(motorInBPin, OUTPUT);
 
-// TODO: measure real PWM frequeny. any value other than 1 makes the motor whine
-// the code says base frequency is ~31kHz
-// VNH3SP30 datasheet limits the input PWM frequency to 10kHz - and yet it works. MOSFETs in thermal danger?
-setPwmFrequency(motorPWMPin, 1);
+  // TODO: check driver power dissipation
+  // base PWM frequency is ~31kHz. any divisor other than 1 makes the motor whine
+  // VNH3SP30 datasheet limits the input PWM frequency to 10kHz. MOSFETs in thermal danger?
+  setPwmFrequency(motorPWMPin, 1);
 
   pinMode(switchFront, INPUT_PULLUP);
   pinMode(switchBack, INPUT_PULLUP);
