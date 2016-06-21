@@ -86,7 +86,7 @@ const struct accelProfile accelProfileHigh[] = {
     brake: false
   },
   { // accelerate and keep running
-    maxMillis: 1900,
+    maxMillis: 2000,
     stepMillis: 4,
     factor: 1,
     add: 1,
@@ -101,7 +101,7 @@ const struct accelProfile accelProfileHigh[] = {
     stepMillis: 100,
     factor: 0.9,
     add: 0,
-    minPWM: 32,
+    minPWM: 42,
     maxPWM: 255,
     startPWM: 0,
     useStartPWM: false,
@@ -112,7 +112,7 @@ const struct accelProfile accelProfileHigh[] = {
     stepMillis: 100,
     factor: 1,
     add: -1,
-    minPWM: 32,
+    minPWM: 42,
     maxPWM: 64,
     startPWM: 0,
     useStartPWM: false,
@@ -617,6 +617,7 @@ Serial.println(ledMoveInterval);
 // wait until driver cools down
 // TODO: this won't work now because motorDisable() pulls the pins low
 if (motorDiagA == HIGH && motorDiagB == HIGH) {
+  debug(currentMillis, F("Motor driver recovered - door blocked\r\n"));
   setLeds1(red, ledSolid);
   doorState = doorBlocked;
   digitalWrite(statusLED, LOW);
