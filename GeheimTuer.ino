@@ -161,7 +161,7 @@ int accelProfileIdx = 0;
 
 /* WS2812 LEDs */
 
-cRGB leds[MAXPIX+EXTRAPIX];
+cRGB leds[MAXPIX + EXTRAPIX];
 cRGB tmp_leds[MAXPIX]; // temp array for fading and blinking
 cRGB *ledptr; // read pointer for WS2812 library, points to start of window
 
@@ -178,7 +178,7 @@ union ledState {
 } ledState;
 
 // pre-defined colors. GRB order, g++ doesn't implement out-of-order initializers
-const cRGB traktor = {g: 0xB8/7, r: 0x67/7, b: 0xDC/7}; // https://wiki.attraktor.org/Corporate_Identity
+const cRGB traktor = {g: 0xB8 / 7, r: 0x67 / 7, b: 0xDC / 7}; // https://wiki.attraktor.org/Corporate_Identity
 const cRGB black = {g: 0x00, r: 0x00, b: 0x00};
 const cRGB white = {g: 0x1F, r: 0x1F, b: 0x1F};
 const cRGB red = {g: 0x00, r: 0x1F, b: 0x00};
@@ -189,22 +189,22 @@ const cRGB blue = {g: 0x00, r: 0x00, b: 0x1F};
 // macro instead of inline function. TODO: compare generated code again
 // fill LED buffer with solid color, reset state, set mode
 #define setLeds1(color1, mode) {\
-  for (uint8_t i = 0; i < MAXPIX+EXTRAPIX; i++) {\
-    leds[i] = (color1);\
-  }\
-  memset(&ledState, 0x00, sizeof(ledState));\
-  ledMode = (mode);\
-}
+    for (uint8_t i = 0; i < MAXPIX+EXTRAPIX; i++) {\
+      leds[i] = (color1);\
+    }\
+    memset(&ledState, 0x00, sizeof(ledState));\
+    ledMode = (mode);\
+  }
 
 // fill LED buffer with alternating colors every modulo pixels, reset state, set mode
 #define setLeds2(color1, color2, modulo, mode) {\
-  for (uint8_t i = 0; i < MAXPIX+EXTRAPIX; i++) {\
-    leds[i] = (i % (modulo)) ? ((color2)) : ((color1));\
-  }\
-  memset(&ledState, 0x00, sizeof(ledState));\
-  ledMode = (mode);\
-ledMoveInterval = 250;\
-}
+    for (uint8_t i = 0; i < MAXPIX+EXTRAPIX; i++) {\
+      leds[i] = (i % (modulo)) ? ((color2)) : ((color1));\
+    }\
+    memset(&ledState, 0x00, sizeof(ledState));\
+    ledMode = (mode);\
+    ledMoveInterval = 250;\
+  }
 
 
 /* unsorted variables below. TODO: refactor & cleanup */
@@ -322,8 +322,8 @@ void setup() {
     motorDiagBDebounce = (motorDiagB = motorDiagBDeglitch = digitalRead(motorDiagBPin)) * 0xFFFF;
   }
 
-//  attachInterrupt(switchFrontIRQ, switchFrontInterrupt, CHANGE);
-//  attachInterrupt(switchTriggerIRQ, switchTriggerInterrupt, FALLING);
+  //  attachInterrupt(switchFrontIRQ, switchFrontInterrupt, CHANGE);
+  //  attachInterrupt(switchTriggerIRQ, switchTriggerInterrupt, FALLING);
 
   digitalWrite(statusLED, LOW);
 }
@@ -343,10 +343,10 @@ void loop() {
   lastMillis = currentMillis;
   // assume that none of the following intervals overflow
 
-/*
-  debug(currentMillis, F("Elapsed millis: "));
-  Serial.println(elapsedMillis);
-*/
+  /*
+    debug(currentMillis, F("Elapsed millis: "));
+    Serial.println(elapsedMillis);
+  */
 
 
   // fast debounce driver error signals to filter short glitches
@@ -373,50 +373,51 @@ void loop() {
   }
 
 
-// remote debugging aid
-// TODO: formalize the commands
-if (Serial.available()) {
-  switch (Serial.read()) {
-    case 'x':
+  // remote debugging aid
+  // TODO: formalize the commands
+  if (Serial.available()) {
+    switch (Serial.read()) {
+      case 'x':
         swTrigger = LOW; break;
-    case 'X':
+      case 'X':
         swTrigger = HIGH; break;
-    case 'b':
+      case 'b':
         swBack = LOW; break;
-    case 'B':
+      case 'B':
         swBack = HIGH; break;
-    case 'f':
+      case 'f':
         swFront = LOW; break;
-    case 'F':
+      case 'F':
         swFront = HIGH; break;
-    case 'i':
+      case 'i':
         pirTrigger = HIGH; break;
-    case 'I':
+      case 'I':
         pirTrigger = LOW; break;
-    case 'm':
+      case 'm':
         debug(currentMillis, F("Door status: "));
         Serial.println(doorState);
         break;
-    case 'h':
-      motorDisable();
-      doorState = doorError;
-      break;
-    case 'r':
-      motorEnable();
-      doorState = doorBlocked;
-      break;
-    case 'k': {
-      const cRGB white255 = {g: 0xFF, r: 0xFF, b: 0xFF};
-      setLeds1(white255, ledSolid);
-      break; }
-    case 'K':
-      setLeds1(black, ledSolid);
-      break;
+      case 'h':
+        motorDisable();
+        doorState = doorError;
+        break;
+      case 'r':
+        motorEnable();
+        doorState = doorBlocked;
+        break;
+      case 'k': {
+          const cRGB white255 = {g: 0xFF, r: 0xFF, b: 0xFF};
+          setLeds1(white255, ledSolid);
+          break;
+        }
+      case 'K':
+        setLeds1(black, ledSolid);
+        break;
+    }
   }
-}
 
 
-  switch(doorState) {
+  switch (doorState) {
     case doorClosed:
       // wait until a button is pressed or the front switch opens
       if (swTrigger == LOW || swFront == HIGH) {
@@ -482,7 +483,7 @@ if (Serial.available()) {
         doorState = doorOpen;
         break;
       }
-      // fall-through to next case
+    // fall-through to next case
 
     case doorClosing:
       if (doorState == doorClosing && swFront == LOW) {
@@ -531,7 +532,7 @@ if (Serial.available()) {
             // short motor if PWM is HIGH, coast otherwise
             _motorFree();
           } else {
-            switch(motorDir) {
+            switch (motorDir) {
               case forward:
                 motorForward(); break;
               case backward:
@@ -550,16 +551,16 @@ if (Serial.available()) {
 
         // update PWM value
         drivePWM = min(accelProfile[accelProfileIdx].maxPWM, max(accelProfile[accelProfileIdx].minPWM,
-                        (drivePWM + accelProfile[accelProfileIdx].add) * accelProfile[accelProfileIdx].factor));
+                       (drivePWM + accelProfile[accelProfileIdx].add) * accelProfile[accelProfileIdx].factor));
 
         debug(currentMillis, F("Drive PWM: "));
         Serial.print(drivePWM);
 
-        analogWrite(motorPWMPin, round(drivePWM*drivePWMscale));
+        analogWrite(motorPWMPin, round(drivePWM * drivePWMscale));
 
-ledMoveInterval = ledMoveMin + ((255-drivePWM)*((double)(ledMoveMax-ledMoveMin)/255));
-Serial.print(F(", ledMoveInterval: "));
-Serial.println(ledMoveInterval);
+        ledMoveInterval = ledMoveMin + ((255 - drivePWM) * ((double)(ledMoveMax - ledMoveMin) / 255));
+        Serial.print(F(", ledMoveInterval: "));
+        Serial.println(ledMoveInterval);
 
       }
       break;
@@ -596,7 +597,7 @@ Serial.println(ledMoveInterval);
         // close door only if end-stop is active
         if (swBack == LOW) {
           debug(currentMillis, F("Button switch triggered - closing door\r\n"));
-//          initDrive(forward, accelProfileLow);
+          //          initDrive(forward, accelProfileLow);
           initDrive(forward, accelProfileHigh);
           ledMode = ledForward;
           doorState = doorClosing;
@@ -614,22 +615,22 @@ Serial.println(ledMoveInterval);
     case doorError:
       // wait for reset by qualified service technician
       // TODO: make it user-resettable
-// wait until driver cools down
-// TODO: this won't work now because motorDisable() pulls the pins low
-if (motorDiagA == HIGH && motorDiagB == HIGH) {
-  debug(currentMillis, F("Motor driver recovered - door blocked\r\n"));
-  setLeds1(red, ledSolid);
-  doorState = doorBlocked;
-  digitalWrite(statusLED, LOW);
-} else {
-  digitalWrite(statusLED, HIGH);
-}
+      // wait until driver cools down
+      // TODO: this won't work now because motorDisable() pulls the pins low
+      if (motorDiagA == HIGH && motorDiagB == HIGH) {
+        debug(currentMillis, F("Motor driver recovered - door blocked\r\n"));
+        setLeds1(red, ledSolid);
+        doorState = doorBlocked;
+        digitalWrite(statusLED, LOW);
+      } else {
+        digitalWrite(statusLED, HIGH);
+      }
       break;
   }
 
 
   ledMillis += elapsedMillis;
-  switch(ledMode) {
+  switch (ledMode) {
     case ledSolid:
       if (ledMillis >= ledSolidInterval) {
         ledMillis = 0;
@@ -639,25 +640,25 @@ if (motorDiagA == HIGH && motorDiagB == HIGH) {
       break;
 
     case ledFade: {
-      if (ledMillis >= ledFadeInterval) {
-        ledMillis = 0;
+        if (ledMillis >= ledFadeInterval) {
+          ledMillis = 0;
 
-        // TODO: really scale the values. this is too cheap
-        for (uint8_t i = 0; i < MAXPIX; i++) {
-          tmp_leds[i].r = max(0, (int)leds[i].r - abs(ledState.fader));
-          tmp_leds[i].g = max(0, (int)leds[i].g - abs(ledState.fader));
-          tmp_leds[i].b = max(0, (int)leds[i].b - abs(ledState.fader));
+          // TODO: really scale the values. this is too cheap
+          for (uint8_t i = 0; i < MAXPIX; i++) {
+            tmp_leds[i].r = max(0, (int)leds[i].r - abs(ledState.fader));
+            tmp_leds[i].g = max(0, (int)leds[i].g - abs(ledState.fader));
+            tmp_leds[i].b = max(0, (int)leds[i].b - abs(ledState.fader));
+          }
+
+          if (ledState.fader++ >= 255) {
+            ledState.fader = -254;
+          }
+
+          ledptr = &tmp_leds[0];
+          LED.sync();
         }
-
-        if (ledState.fader++ >= 255) {
-          ledState.fader = -254;
-        }
-
-        ledptr = &tmp_leds[0];
-        LED.sync();
+        break;
       }
-      break;
-    }
 
     case ledBlink:
       if (ledMillis >= ledBlinkInterval) {
@@ -666,13 +667,13 @@ if (motorDiagA == HIGH && motorDiagB == HIGH) {
         if (!ledState.blink_off) {
           ledptr = &leds[0];
         } else {
-//          memset(&tmp_leds, 0x00, sizeof(tmp_leds));
+          //          memset(&tmp_leds, 0x00, sizeof(tmp_leds));
           for (uint8_t i = 0; i < MAXPIX; i++) {
             tmp_leds[i] = black;
           }
           ledptr = &tmp_leds[0];
         }
-  
+
         ledState.blink_off = !ledState.blink_off;
 
         LED.sync();
@@ -686,7 +687,7 @@ if (motorDiagA == HIGH && motorDiagB == HIGH) {
         if (ledState.ledidx >= EXTRAPIX) {
           ledState.ledidx = 0;
         }
-  
+
         // move window forward
         ledptr = &leds[ledState.ledidx++];
         LED.sync();
@@ -700,7 +701,7 @@ if (motorDiagA == HIGH && motorDiagB == HIGH) {
         if (ledState.ledidx == 0) {
           ledState.ledidx = EXTRAPIX;
         }
-  
+
         // move window backwards
         ledptr = &leds[--ledState.ledidx];
         LED.sync();
@@ -726,7 +727,7 @@ inline void debounce(const int swPin, bool *const swVal, bool *const swDeglitch,
 //__attribute__((always_inline))
 inline void debounce(const volatile uint8_t *const port, const uint8_t pinMask, bool *const swVal, bool *const swDeglitch, uint16_t *const swDebounce) {
   // NB: interference near multiples of 1/interval could cause spurious edges
-  *swDebounce = ((*swDebounce << 1) | ((*port & pinMask)?(1):(0))) & 0x1FFF; // 13-bit debounce
+  *swDebounce = ((*swDebounce << 1) | ((*port & pinMask) ? (1) : (0))) & 0x1FFF; // 13-bit debounce
 
   if (*swDebounce == 0x1000 && *swDeglitch == HIGH) { // edge HIGH -> 12xLOW
     *swVal = *swDeglitch = LOW;
@@ -746,7 +747,7 @@ inline void initDrive(const int dir, const struct accelProfile *const profile) {
   driveProfileMillis = driveTotalMillis = 0;
   driveMillis = accelProfile[0].stepMillis;
 
-  switch(motorDir) {
+  switch (motorDir) {
     case forward:
       motorForward(); break;
     case backward:
@@ -855,8 +856,8 @@ void _motorBackward() {
  */
 void setPwmFrequency(const int pin, const int divisor) {
   byte mode;
-  if(pin == 5 || pin == 6 || pin == 9 || pin == 10) {
-    switch(divisor) {
+  if (pin == 5 || pin == 6 || pin == 9 || pin == 10) {
+    switch (divisor) {
       case 1: mode = 0x01; break;
       case 8: mode = 0x02; break;
       case 64: mode = 0x03; break;
@@ -864,13 +865,13 @@ void setPwmFrequency(const int pin, const int divisor) {
       case 1024: mode = 0x05; break;
       default: return;
     }
-    if(pin == 5 || pin == 6) {
+    if (pin == 5 || pin == 6) {
       TCCR0B = (TCCR0B & 0b11111000) | mode;
     } else {
       TCCR1B = (TCCR1B & 0b11111000) | mode;
     }
-  } else if(pin == 3 || pin == 11) {
-    switch(divisor) {
+  } else if (pin == 3 || pin == 11) {
+    switch (divisor) {
       case 1: mode = 0x01; break;
       case 8: mode = 0x02; break;
       case 32: mode = 0x03; break;
