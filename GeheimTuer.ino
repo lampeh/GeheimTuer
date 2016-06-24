@@ -297,10 +297,12 @@ void setup() {
     doorState = doorClosed;
     setLeds1(green, ledFade);
     Serial.print(F("closed\r\n"));
+/*
   } else if (swBack == LOW) {
     doorState = doorOpen;
     setLeds1(green, ledBlink);
     Serial.print(F("open\r\n"));
+*/
   } else {
     doorState = doorBlocked;
     setLeds1(red, ledSolid);
