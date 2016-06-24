@@ -3,6 +3,7 @@
 /* config */
 
 // MAXPIX must fit uint8_t loop variable in ledFade, ledBlink
+// MAXPIX+EXTRAPIX must fit uint8_t loop variable in setLeds
 #define MAXPIX 20  // LED stripe length
 #define EXTRAPIX 3 // animation buffer, read window moves back and forth EXTRAPIX pixels
 
@@ -156,7 +157,7 @@ const struct accelProfile accelProfileHigh[] = {
 enum motorDir { forward, backward } motorDir;
 
 const struct accelProfile *accelProfile; // pointer to current profile
-int accelProfileIdx = 0;
+uint8_t accelProfileIdx = 0;
 
 
 /* WS2812 LEDs */
@@ -230,17 +231,16 @@ const unsigned long debounceInterval = 2; // shift inputs into debounce register
 unsigned long debounceMillis = 0;
 
 // TODO: use structured profiles
+unsigned long ledMillis = 0;
 const unsigned long ledSolidInterval = 250; // constantly update LED stripe in solid mode
 const unsigned long ledFadeInterval = 20;
 const unsigned long ledBlinkInterval = 500;
-//const unsigned long ledMoveInterval = 250; // shift LED window every X ms
 unsigned long ledMoveInterval; // shift LED window every X ms - varied by drivePWM
-unsigned long ledMillis = 0;
-const unsigned int ledMoveMin = 50; // minimum move interval if drivePWM == 255
-const unsigned int ledMoveMax = 305; // maximum move interval if drivePWM == 0
+const unsigned long ledMoveMin = 50; // minimum move interval if drivePWM == 255
+const unsigned long ledMoveMax = 305; // maximum move interval if drivePWM == 0
 
-bool swFront, swBack, swTrigger, motorDiagA, motorDiagB, pirTrigger; // debounced inputs
-bool swFrontDeglitch, swBackDeglitch, swTriggerDeglitch, motorDiagADeglitch, motorDiagBDeglitch, pirDeglitch; // TODO: quick hack. document
+bool swFront, swBack, swTrigger, motorDiagA, motorDiagB, pirTrigger; // debounced inputs, can be reset to wait for next cycle
+bool swFrontDeglitch, swBackDeglitch, swTriggerDeglitch, motorDiagADeglitch, motorDiagBDeglitch, pirDeglitch; // debounced inputs, reset by every detected edge
 uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce, motorDiagBDebounce, pirDebounce; // debounce shift registers
 
 
