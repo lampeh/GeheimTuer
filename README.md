@@ -12,3 +12,6 @@ Prototype 2:
 
 Prototype 3, now with laser case and cooling fan:
 ![Prototype 3](geheimtuer_proto3.jpg)
+
+Spaghetti Schematics. Just a reminder to myself.
+![Baseboard](baseboard.jpg)
