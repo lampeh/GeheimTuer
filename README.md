@@ -16,5 +16,5 @@ Prototype 3, now with laser case and cooling fan:
 Spaghetti Schematics. Just a reminder to myself:
 ![Baseboard](baseboard.png)
 
-Case:
+Case (created with [Tabbed Box Maker](https://github.com/paulh-rnd/TabbedBoxMaker)):
 ![Case Cut](https://cdn.rawgit.com/lampeh/GeheimTuer/master/case.svg)
