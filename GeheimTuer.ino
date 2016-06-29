@@ -1,4 +1,5 @@
 #include <WS2812.h>
+#include <OneWire.h>
 
 /* config */
 
@@ -36,6 +37,12 @@ const int pirPin = 12;
 
 // on-board status LED
 const int statusLED = 13;
+
+// 1-wire bus
+OneWire ds(A0);
+
+// PWM fan control
+const int fanPWMPin = 10;
 
 // ad-hoc acceleration profile
 // TODO: self-calibration by means of driveTotalMillis
@@ -239,9 +246,24 @@ unsigned long ledMoveInterval; // shift LED window every X ms - varied by driveP
 const unsigned long ledMoveMin = 50; // minimum move interval if drivePWM == 255
 const unsigned long ledMoveMax = 305; // maximum move interval if drivePWM == 0
 
+unsigned long dsMillis = 0;
+const unsigned long dsInterval = 1000; // sensor read interval
+const signed int tempMin = 35/0.0625; // run fan at minimum speed at tempMin
+const signed int tempMax = 45/0.0625; // run fan at full speed above tempMax
+const signed int tempHyst = 5/0.0625; // shut off fan at tempMin-tempHyst
+
+byte fanPWM;
+const byte fanMin = 170; // minimum PWM limit at temp > tempMin
+const byte fanMax = 255; // maximum PWM limit at temp < tempMax
+
+
 bool swFront, swBack, swTrigger, motorDiagA, motorDiagB, pirTrigger; // debounced inputs, can be reset to wait for next cycle
 bool swFrontDeglitch, swBackDeglitch, swTriggerDeglitch, motorDiagADeglitch, motorDiagBDeglitch, pirDeglitch; // debounced inputs, reset by every detected edge
 uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce, motorDiagBDebounce, pirDebounce; // debounce shift registers
+
+const int dsMax = 3; // register at most dsMax sensors
+byte dsAddrs[dsMax][8]; // 1-wire addresses
+byte dsCount; // registered sensors
 
 
 void setup() {
@@ -250,6 +272,11 @@ void setup() {
 
   // disable driver bridges until setup complete
   motorDisable();
+
+  // start fan on full speed
+  pinMode(fanPWMPin, OUTPUT);
+  digitalWrite(fanPWMPin, HIGH);
+  fanPWM = 255;
 
   // initialize WS2812 LEDs
   setLeds1(traktor, ledSolid);
@@ -260,6 +287,11 @@ void setup() {
   Serial.begin(115200);
   Serial.print(F("\r\nDoor control init\r\n"));
 
+  // TODO: check driver power dissipation
+  // base PWM frequency is ~31kHz. any divisor other than 1 makes the motor whine
+  // VNH3SP30 datasheet limits the input PWM frequency to 10kHz. MOSFETs in thermal danger?
+  setPwmFrequency(motorPWMPin, 1); // also affects fan PWM output
+
   digitalWrite(motorPWMPin, LOW);
   pinMode(motorPWMPin, OUTPUT);
 
@@ -269,17 +301,44 @@ void setup() {
   digitalWrite(motorInBPin, LOW);
   pinMode(motorInBPin, OUTPUT);
 
-  // TODO: check driver power dissipation
-  // base PWM frequency is ~31kHz. any divisor other than 1 makes the motor whine
-  // VNH3SP30 datasheet limits the input PWM frequency to 10kHz. MOSFETs in thermal danger?
-  setPwmFrequency(motorPWMPin, 1);
-
   pinMode(switchFront, INPUT_PULLUP);
   pinMode(switchBack, INPUT_PULLUP);
 
   pinMode(switchTrigger, INPUT_PULLUP);
 
   pinMode(pirPin, INPUT);
+
+  // scan 1-wire bus for temperature sensors
+  byte addr[8];
+  byte dsIdx = 0;
+
+  ds.reset_search();
+  Serial.print(F("Searching 1-wire...\r\n"));
+
+  while (ds.search(addr) && dsIdx < dsMax) {
+    Serial.print(F("Detected device: "));
+    for (int i = 0; i < 8; i++) {
+      Serial.print(addr[i], HEX);
+    }
+
+    Serial.print(F(" - "));
+    if (OneWire::crc8(addr, 7) != addr[7]) {
+      Serial.print(F("invalid CRC!\r\n"));
+      continue;
+    }
+
+    if (addr[0] == 0x28) {
+      for (int i = 0; i < 8; i++) {
+        dsAddrs[dsIdx][i] = addr[i];
+      }
+      dsIdx++;
+      Serial.print(F("DS18B20 registered\r\n"));
+    } else {
+      Serial.print(F("unknown device ignored\r\n"));
+     }
+  }
+  dsCount = dsIdx;
+  ds.reset_search();
 
   // initialize debounce registers, assume steady state
   swFrontDebounce = (swFront = swFrontDeglitch = digitalRead(switchFront)) * 0xFFFF;
@@ -401,10 +460,12 @@ void loop() {
         break;
       case 'h':
         motorDisable();
+        setLeds1(red, ledFade);
         doorState = doorError;
         break;
       case 'r':
         motorEnable();
+        setLeds1(red, ledSolid);
         doorState = doorBlocked;
         break;
       case 'k': {
@@ -417,6 +478,10 @@ void loop() {
         break;
     }
   }
+
+
+  // add up dsMillis early, so the door driver can reset it
+  dsMillis += elapsedMillis;
 
 
   switch (doorState) {
@@ -508,6 +573,11 @@ void loop() {
         break;
       }
 
+      // keep fan on full while driving
+      digitalWrite(fanPWMPin, HIGH);
+      dsMillis = 0;
+      fanPWM = 255;
+
       driveTotalMillis += elapsedMillis;
       driveMillis += elapsedMillis;
       if (driveMillis >= accelProfile[accelProfileIdx].stepMillis) {
@@ -518,6 +588,9 @@ void loop() {
         if (driveProfileMillis >= accelProfile[accelProfileIdx].maxMillis) {
           driveProfileMillis = 0;
           accelProfileIdx++;
+
+          debug(currentMillis, F("accelProfileIdx: "));
+          Serial.println(accelProfileIdx);
 
           // end-stop not reached at end of profile, someone might be in the way
           if (accelProfile[accelProfileIdx].maxMillis == 0) {
@@ -546,9 +619,6 @@ void loop() {
           if (accelProfile[accelProfileIdx].useStartPWM) {
             drivePWM = accelProfile[accelProfileIdx].startPWM;
           }
-
-          debug(currentMillis, F("accelProfileIdx: "));
-          Serial.println(accelProfileIdx);
         }
 
         // update PWM value
@@ -709,6 +779,74 @@ void loop() {
         LED.sync();
       }
       break;
+  }
+
+  if (dsMillis >= dsInterval) {
+    dsMillis = 0;
+    signed int maxTemp = 0;
+
+    byte data[9];
+    byte dsRead = 0;
+
+    for (int i = 0; i < dsCount; i++) {
+      // read temperature
+      ds.reset();
+      ds.select(dsAddrs[i]);
+      ds.write(0xBE);
+      debug(currentMillis, F("Sensor "));
+      Serial.print(i);
+      Serial.print(F(": "));
+
+      for (int j = 0; j < 9; j++) {
+        data[j] = ds.read();
+      }
+
+      if (OneWire::crc8(data, 8) == data[8]) {
+        signed int temp = ((data[1] << 8) | data[0]);
+        if (temp > maxTemp) {
+          maxTemp = temp;
+        }
+        Serial.print(temp);
+        Serial.print(F(" - "));
+        Serial.print((double)temp*0.0625, 2);
+        Serial.print(F("°C\r\n"));
+        dsRead++;
+      } else {
+        Serial.print(F("invalid CRC!\r\n"));
+      }
+
+      // start next conversion
+      ds.reset();
+      ds.select(dsAddrs[i]);
+      ds.write(0x44);
+    }
+
+    if (dsRead) {
+      if (maxTemp <= tempMin-tempHyst) {
+        if (fanPWM > 0) {
+          debug(currentMillis, F("Fan off\r\n"));
+          fanPWM = 0;
+        }
+      } else if (maxTemp >= tempMax) {
+        if (fanPWM < 255) {
+          debug(currentMillis, F("Fan full\r\n"));
+          fanPWM = 255;
+        }
+      } else if (maxTemp >= tempMin) {
+        fanPWM = map(maxTemp, tempMin, tempMax, fanMin, fanMax);
+        Serial.print(F("Fan PWM: "));
+        Serial.println(fanPWM);
+      } else if (fanPWM > 0) {
+        fanPWM = fanMin;
+      }
+    } else {
+      // no temperature sensor responded
+      // run fan at full speed
+      debug(currentMillis, F("No temperature reading! - Fan full\r\n"));
+      fanPWM = 255;
+    }
+
+    analogWrite(fanPWMPin, fanPWM);
   }
 }
 
