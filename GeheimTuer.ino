@@ -246,24 +246,24 @@ unsigned long ledMoveInterval; // shift LED window every X ms - varied by driveP
 const unsigned long ledMoveMin = 50; // minimum move interval if drivePWM == 255
 const unsigned long ledMoveMax = 305; // maximum move interval if drivePWM == 0
 
+const int dsMax = 3; // register at most dsMax DS18B20 sensors
+byte dsAddrs[dsMax][8]; // 1-wire addresses
+byte dsCount; // registered sensors
+signed int dsResults[dsMax];
+
 unsigned long dsMillis = 0;
 const unsigned long dsInterval = 1000; // sensor read interval
-const signed int tempMin = 35/0.0625; // run fan at minimum speed at tempMin
-const signed int tempMax = 45/0.0625; // run fan at full speed above tempMax
-const signed int tempHyst = 5/0.0625; // shut off fan at tempMin-tempHyst
+const signed int tempMin = 33/0.0625; // run fan at minimum speed at tempMin
+const signed int tempMax = 40/0.0625; // run fan at full speed above tempMax
+const signed int tempHyst = 3/0.0625; // shut off fan at tempMin-tempHyst
 
 byte fanPWM;
 const byte fanMin = 170; // minimum PWM limit at temp > tempMin
 const byte fanMax = 255; // maximum PWM limit at temp < tempMax
 
-
 bool swFront, swBack, swTrigger, motorDiagA, motorDiagB, pirTrigger; // debounced inputs, can be reset to wait for next cycle
 bool swFrontDeglitch, swBackDeglitch, swTriggerDeglitch, motorDiagADeglitch, motorDiagBDeglitch, pirDeglitch; // debounced inputs, reset by every detected edge
 uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce, motorDiagBDebounce, pirDebounce; // debounce shift registers
-
-const int dsMax = 3; // register at most dsMax sensors
-byte dsAddrs[dsMax][8]; // 1-wire addresses
-byte dsCount; // registered sensors
 
 
 void setup() {
@@ -308,37 +308,8 @@ void setup() {
 
   pinMode(pirPin, INPUT);
 
-  // scan 1-wire bus for temperature sensors
-  byte addr[8];
-  byte dsIdx = 0;
-
-  ds.reset_search();
-  Serial.print(F("Searching 1-wire...\r\n"));
-
-  while (ds.search(addr) && dsIdx < dsMax) {
-    Serial.print(F("Detected device: "));
-    for (int i = 0; i < 8; i++) {
-      Serial.print(addr[i], HEX);
-    }
-
-    Serial.print(F(" - "));
-    if (OneWire::crc8(addr, 7) != addr[7]) {
-      Serial.print(F("invalid CRC!\r\n"));
-      continue;
-    }
-
-    if (addr[0] == 0x28) {
-      for (int i = 0; i < 8; i++) {
-        dsAddrs[dsIdx][i] = addr[i];
-      }
-      dsIdx++;
-      Serial.print(F("DS18B20 registered\r\n"));
-    } else {
-      Serial.print(F("unknown device ignored\r\n"));
-     }
-  }
-  dsCount = dsIdx;
-  ds.reset_search();
+  // register sensors
+  scan1Wire();
 
   // initialize debounce registers, assume steady state
   swFrontDebounce = (swFront = swFrontDeglitch = digitalRead(switchFront)) * 0xFFFF;
@@ -403,11 +374,6 @@ void loop() {
   }
   lastMillis = currentMillis;
   // assume that none of the following intervals overflow
-
-  /*
-    debug(currentMillis, F("Elapsed millis: "));
-    Serial.println(elapsedMillis);
-  */
 
 
   // fast debounce driver error signals to filter short glitches
@@ -475,6 +441,9 @@ void loop() {
         }
       case 'K':
         setLeds1(black, ledSolid);
+        break;
+      case '1':
+        scan1Wire();
         break;
     }
   }
@@ -550,7 +519,7 @@ void loop() {
         doorState = doorOpen;
         break;
       }
-    // fall-through to next case
+      // fall-through to next case
 
     case doorClosing:
       if (doorState == doorClosing && swFront == LOW) {
@@ -783,20 +752,16 @@ void loop() {
 
   if (dsMillis >= dsInterval) {
     dsMillis = 0;
-    signed int maxTemp = 0;
 
     byte data[9];
     byte dsRead = 0;
+    signed int maxTemp = 0;
 
     for (int i = 0; i < dsCount; i++) {
       // read temperature
       ds.reset();
       ds.select(dsAddrs[i]);
       ds.write(0xBE);
-      debug(currentMillis, F("Sensor "));
-      Serial.print(i);
-      Serial.print(F(": "));
-
       for (int j = 0; j < 9; j++) {
         data[j] = ds.read();
       }
@@ -806,13 +771,24 @@ void loop() {
         if (temp > maxTemp) {
           maxTemp = temp;
         }
-        Serial.print(temp);
-        Serial.print(F(" - "));
-        Serial.print((double)temp*0.0625, 2);
-        Serial.print(F("°C\r\n"));
+
+        if (temp != dsResults[i]) {
+          dsResults[i] = temp;
+
+          debug(currentMillis, F("Sensor "));
+          Serial.print(i);
+          Serial.print(F(": "));
+          Serial.print(temp);
+          Serial.print(F(" - "));
+          Serial.print((double)temp*0.0625, 2);
+          Serial.print(F("°C\r\n"));
+        }
+
         dsRead++;
       } else {
-        Serial.print(F("invalid CRC!\r\n"));
+        debug(currentMillis, F("Sensor "));
+        Serial.print(i);
+        Serial.print(F(": invalid CRC!\r\n"));
       }
 
       // start next conversion
@@ -833,9 +809,12 @@ void loop() {
           fanPWM = 255;
         }
       } else if (maxTemp >= tempMin) {
-        fanPWM = map(maxTemp, tempMin, tempMax, fanMin, fanMax);
-        Serial.print(F("Fan PWM: "));
-        Serial.println(fanPWM);
+        byte newPWM = map(maxTemp, tempMin, tempMax, fanMin, fanMax);
+        if (newPWM != fanPWM) {
+          fanPWM = newPWM;
+          debug(currentMillis, F("Fan PWM: "));
+          Serial.println(fanPWM);
+        }
       } else if (fanPWM > 0) {
         fanPWM = fanMin;
       }
@@ -855,6 +834,40 @@ inline void debug(const unsigned long timestamp, const __FlashStringHelper *cons
   Serial.print(timestamp);
   Serial.write(' ');
   Serial.print(string);
+}
+
+// scan 1-wire bus for temperature sensors
+void scan1Wire() {
+  byte addr[8];
+  byte dsIdx = 0;
+
+  ds.reset_search();
+  Serial.print(F("Searching 1-wire...\r\n"));
+
+  while (ds.search(addr) && dsIdx < dsMax) {
+    Serial.print(F("Detected device: "));
+    for (int i = 0; i < 8; i++) {
+      Serial.print(addr[i], HEX);
+    }
+
+    Serial.print(F(" - "));
+    if (OneWire::crc8(addr, 7) != addr[7]) {
+      Serial.print(F("invalid CRC!\r\n"));
+      continue;
+    }
+
+    if (addr[0] == 0x28) {
+      for (int i = 0; i < 8; i++) {
+        dsAddrs[dsIdx][i] = addr[i];
+      }
+      dsIdx++;
+      Serial.print(F("DS18B20 registered\r\n"));
+    } else {
+      Serial.print(F("unknown device ignored\r\n"));
+     }
+  }
+  dsCount = dsIdx;
+  ds.reset_search();
 }
 
 //__attribute__((always_inline))
