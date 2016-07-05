@@ -808,38 +808,38 @@ void loop() {
     }
 
     if (!fanOverride) {
-    if (dsRead) {
-      if (maxTemp <= (tempMin - tempHyst)) {
-        if (fanPWM > 0) {
-          debug(currentMillis, F("Fan off\r\n"));
-          fanPWM = 0;
+      if (dsRead) {
+        if (maxTemp <= (tempMin - tempHyst)) {
+          if (fanPWM > 0) {
+            debug(currentMillis, F("Fan off\r\n"));
+            fanPWM = 0;
+          }
+        } else if (maxTemp >= tempMax) {
+          if (fanPWM < 255) {
+            debug(currentMillis, F("Fan full\r\n"));
+            fanPWM = 255;
+          }
+        } else if (maxTemp >= tempMin) {
+          byte newPWM = map(maxTemp, tempMin, tempMax, fanMin, fanMax);
+          if (newPWM != fanPWM) {
+            fanPWM = newPWM;
+            debug(currentMillis, F("Fan PWM: "));
+            Serial.print(fanPWM);
+            Serial.print(F(" ("));
+            Serial.print(maxTemp);
+            Serial.print(F(")\r\n"));
+          }
+        } else if (fanPWM > 0) {
+          fanPWM = fanMin;
         }
-      } else if (maxTemp >= tempMax) {
+      } else {
+        // no temperature sensor responded
+        // run fan at full speed
         if (fanPWM < 255) {
-          debug(currentMillis, F("Fan full\r\n"));
+          debug(currentMillis, F("No temperature reading! - Fan full\r\n"));
           fanPWM = 255;
         }
-      } else if (maxTemp >= tempMin) {
-        byte newPWM = map(maxTemp, tempMin, tempMax, fanMin, fanMax);
-        if (newPWM != fanPWM) {
-          fanPWM = newPWM;
-          debug(currentMillis, F("Fan PWM: "));
-          Serial.print(fanPWM);
-          Serial.print(F(" ("));
-          Serial.print(maxTemp);
-          Serial.print(F(")\r\n"));
-        }
-      } else if (fanPWM > 0) {
-        fanPWM = fanMin;
       }
-    } else {
-      // no temperature sensor responded
-      // run fan at full speed
-      if (fanPWM < 255) {
-        debug(currentMillis, F("No temperature reading! - Fan full\r\n"));
-        fanPWM = 255;
-      }
-    }
 
       analogWrite(fanPWMPin, fanPWM);
     }
