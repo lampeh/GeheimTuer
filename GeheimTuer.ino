@@ -1,3 +1,5 @@
+#include <avr/wdt.h>
+
 #include <WS2812.h>
 #include <OneWire.h>
 
@@ -82,9 +84,9 @@ const struct accelProfile accelProfileLow[] = {
 // belt tension limits torque. important safety feature
 // TODO: install less stiff spring between belt and door to dampen the initial pull
 const struct accelProfile accelProfileHigh[] = {
-  { // slow start
-    maxMillis: 260,
-    stepMillis: 10,
+  { // accelerate and keep running
+    maxMillis: 2450,
+    stepMillis: 4,
     factor: 1,
     add: 1,
     minPWM: 0,
@@ -93,34 +95,23 @@ const struct accelProfile accelProfileHigh[] = {
     useStartPWM: true, // first element always sets initial PWM value
     brake: false
   },
-  { // accelerate and keep running
-    maxMillis: 2000,
-    stepMillis: 4,
-    factor: 1,
-    add: 1,
-    minPWM: 0,
-    maxPWM: 255,
-    startPWM: 0,
-    useStartPWM: false,
-    brake: false
-  },
   { // slow down before end-stop
-    maxMillis: 1300,
-    stepMillis: 100,
+    maxMillis: 1000,
+    stepMillis: 75,
     factor: 0.9,
     add: 0,
-    minPWM: 42,
+    minPWM: 50,
     maxPWM: 255,
     startPWM: 0,
     useStartPWM: false,
     brake: false
   },
   { // seek end-stop
-    maxMillis: 4000,
+    maxMillis: 3000,
     stepMillis: 100,
     factor: 1,
     add: -1,
-    minPWM: 42,
+    minPWM: 50,
     maxPWM: 64,
     startPWM: 0,
     useStartPWM: false,
@@ -164,7 +155,7 @@ const struct accelProfile accelProfileHigh[] = {
 enum motorDir { forward, backward } motorDir;
 
 const struct accelProfile *accelProfile; // pointer to current profile
-uint8_t accelProfileIdx = 0;
+byte accelProfileIdx = 0;
 
 
 /* WS2812 LEDs */
@@ -253,13 +244,14 @@ signed int dsResults[dsMax];
 
 unsigned long dsMillis = 0;
 const unsigned long dsInterval = 1000; // sensor read interval
-const signed int tempMin = 33/0.0625; // run fan at minimum speed at tempMin
 const signed int tempMax = 40/0.0625; // run fan at full speed above tempMax
+const signed int tempMin = 33/0.0625; // run fan at minimum speed at tempMin
 const signed int tempHyst = 3/0.0625; // shut off fan at tempMin-tempHyst
 
 byte fanPWM;
 const byte fanMin = 170; // minimum PWM limit at temp > tempMin
 const byte fanMax = 255; // maximum PWM limit at temp < tempMax
+bool fanOverride = false;
 
 bool swFront, swBack, swTrigger, motorDiagA, motorDiagB, pirTrigger; // debounced inputs, can be reset to wait for next cycle
 bool swFrontDeglitch, swBackDeglitch, swTriggerDeglitch, motorDiagADeglitch, motorDiagBDeglitch, pirDeglitch; // debounced inputs, reset by every detected edge
@@ -267,6 +259,8 @@ uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce,
 
 
 void setup() {
+  wdt_disable();
+
   pinMode(statusLED, OUTPUT);
   digitalWrite(statusLED, HIGH);
 
@@ -309,7 +303,7 @@ void setup() {
   pinMode(pirPin, INPUT);
 
   // register sensors
-  scan1Wire();
+  dsCount = scan1Wire(dsAddrs, dsMax);
 
   // initialize debounce registers, assume steady state
   swFrontDebounce = (swFront = swFrontDeglitch = digitalRead(switchFront)) * 0xFFFF;
@@ -358,12 +352,17 @@ void setup() {
   //  attachInterrupt(switchTriggerIRQ, switchTriggerInterrupt, FALLING);
 
   digitalWrite(statusLED, LOW);
+
+  // reset device if loop() takes too long
+  wdt_enable(WDTO_120MS);
 }
 
 
 void loop() {
   unsigned long currentMillis;
   unsigned long elapsedMillis;
+
+  wdt_reset();
 
   currentMillis = millis();
   // millis() will overflow after approximately 50 days.
@@ -374,6 +373,10 @@ void loop() {
   }
   lastMillis = currentMillis;
   // assume that none of the following intervals overflow
+
+
+  // add up dsMillis early, so the door driver can reset it
+  dsMillis += elapsedMillis;
 
 
   // fast debounce driver error signals to filter short glitches
@@ -443,14 +446,18 @@ void loop() {
         setLeds1(black, ledSolid);
         break;
       case '1':
-        scan1Wire();
+        dsCount = scan1Wire(dsAddrs, dsMax);
+        break;
+      case 'l':
+        digitalWrite(fanPWMPin, HIGH);
+        fanOverride = true;
+        fanPWM = 255;
+        break;
+      case 'L':
+        fanOverride = false;
         break;
     }
   }
-
-
-  // add up dsMillis early, so the door driver can reset it
-  dsMillis += elapsedMillis;
 
 
   switch (doorState) {
@@ -594,15 +601,15 @@ void loop() {
         drivePWM = min(accelProfile[accelProfileIdx].maxPWM, max(accelProfile[accelProfileIdx].minPWM,
                        (drivePWM + accelProfile[accelProfileIdx].add) * accelProfile[accelProfileIdx].factor));
 
-        debug(currentMillis, F("Drive PWM: "));
-        Serial.print(drivePWM);
+        // update LED animation speed
+        ledMoveInterval = ledMoveMin + ((255 - drivePWM) * ((double)(ledMoveMax - ledMoveMin) / 255));
 
         analogWrite(motorPWMPin, round(drivePWM * drivePWMscale));
 
-        ledMoveInterval = ledMoveMin + ((255 - drivePWM) * ((double)(ledMoveMax - ledMoveMin) / 255));
+        debug(currentMillis, F("Drive PWM: "));
+        Serial.print(drivePWM);
         Serial.print(F(", ledMoveInterval: "));
         Serial.println(ledMoveInterval);
-
       }
       break;
 
@@ -621,8 +628,6 @@ void loop() {
         }
       }
       // hold the door open if button pressed
-      // TODO: another possibility would be to fall-through to doorBlocked
-      // and close the door instead. which way is better?
       if (swTrigger == LOW) {
         motorFree();
         debug(currentMillis, F("Button switch triggered - door blocked\r\n"));
@@ -638,7 +643,6 @@ void loop() {
         // close door only if end-stop is active
         if (swBack == LOW) {
           debug(currentMillis, F("Button switch triggered - closing door\r\n"));
-          //          initDrive(forward, accelProfileLow);
           initDrive(forward, accelProfileHigh);
           ledMode = ledForward;
           doorState = doorClosing;
@@ -663,8 +667,12 @@ void loop() {
         setLeds1(red, ledSolid);
         doorState = doorBlocked;
         digitalWrite(statusLED, LOW);
+        fanOverride = false;
       } else {
         digitalWrite(statusLED, HIGH);
+        digitalWrite(fanPWMPin, HIGH);
+        fanPWM = 255;
+        fanOverride = true;
       }
       break;
   }
@@ -750,6 +758,7 @@ void loop() {
       break;
   }
 
+
   if (dsMillis >= dsInterval) {
     dsMillis = 0;
 
@@ -757,22 +766,19 @@ void loop() {
     byte dsRead = 0;
     signed int maxTemp = 0;
 
-    for (int i = 0; i < dsCount; i++) {
+    for (byte i = 0; i < dsCount; i++) {
       // read temperature
       ds.reset();
       ds.select(dsAddrs[i]);
       ds.write(0xBE);
-      for (int j = 0; j < 9; j++) {
+      for (byte j = 0; j < sizeof(data); j++) {
         data[j] = ds.read();
       }
 
       if (OneWire::crc8(data, 8) == data[8]) {
         signed int temp = ((data[1] << 8) | data[0]);
-        if (temp > maxTemp) {
-          maxTemp = temp;
-        }
 
-        if (temp != dsResults[i]) {
+        if (abs(temp - dsResults[i]) > 1) {
           dsResults[i] = temp;
 
           debug(currentMillis, F("Sensor "));
@@ -780,8 +786,12 @@ void loop() {
           Serial.print(F(": "));
           Serial.print(temp);
           Serial.print(F(" - "));
-          Serial.print((double)temp*0.0625, 2);
+          Serial.print((double)temp * 0.0625, 2);
           Serial.print(F("°C\r\n"));
+        }
+
+        if (dsResults[i] > maxTemp) {
+          maxTemp = dsResults[i];
         }
 
         dsRead++;
@@ -797,8 +807,9 @@ void loop() {
       ds.write(0x44);
     }
 
+    if (!fanOverride) {
     if (dsRead) {
-      if (maxTemp <= tempMin-tempHyst) {
+      if (maxTemp <= (tempMin - tempHyst)) {
         if (fanPWM > 0) {
           debug(currentMillis, F("Fan off\r\n"));
           fanPWM = 0;
@@ -813,7 +824,10 @@ void loop() {
         if (newPWM != fanPWM) {
           fanPWM = newPWM;
           debug(currentMillis, F("Fan PWM: "));
-          Serial.println(fanPWM);
+          Serial.print(fanPWM);
+          Serial.print(F(" ("));
+          Serial.print(maxTemp);
+          Serial.print(F(")\r\n"));
         }
       } else if (fanPWM > 0) {
         fanPWM = fanMin;
@@ -821,11 +835,14 @@ void loop() {
     } else {
       // no temperature sensor responded
       // run fan at full speed
-      debug(currentMillis, F("No temperature reading! - Fan full\r\n"));
-      fanPWM = 255;
+      if (fanPWM < 255) {
+        debug(currentMillis, F("No temperature reading! - Fan full\r\n"));
+        fanPWM = 255;
+      }
     }
 
-    analogWrite(fanPWMPin, fanPWM);
+      analogWrite(fanPWMPin, fanPWM);
+    }
   }
 }
 
@@ -837,37 +854,39 @@ inline void debug(const unsigned long timestamp, const __FlashStringHelper *cons
 }
 
 // scan 1-wire bus for temperature sensors
-void scan1Wire() {
+// fills dsAddrs[] with at most dsMax 8-byte addresses
+// returns the number of registered addresses
+// TODO: requires global OneWire instance "ds"
+byte scan1Wire(byte dsAddrs[][8], const byte dsMax) {
   byte addr[8];
   byte dsIdx = 0;
 
-  ds.reset_search();
   Serial.print(F("Searching 1-wire...\r\n"));
+
+  ds.reset_search();
 
   while (ds.search(addr) && dsIdx < dsMax) {
     Serial.print(F("Detected device: "));
-    for (int i = 0; i < 8; i++) {
+    for (byte i = 0; i < sizeof(addr); i++) {
       Serial.print(addr[i], HEX);
     }
-
     Serial.print(F(" - "));
+
     if (OneWire::crc8(addr, 7) != addr[7]) {
       Serial.print(F("invalid CRC!\r\n"));
       continue;
     }
 
     if (addr[0] == 0x28) {
-      for (int i = 0; i < 8; i++) {
-        dsAddrs[dsIdx][i] = addr[i];
-      }
+      memcpy(&dsAddrs[dsIdx], &addr, sizeof(dsAddrs[dsIdx]));
       dsIdx++;
       Serial.print(F("DS18B20 registered\r\n"));
     } else {
       Serial.print(F("unknown device ignored\r\n"));
      }
   }
-  dsCount = dsIdx;
-  ds.reset_search();
+
+  return dsIdx;
 }
 
 //__attribute__((always_inline))
