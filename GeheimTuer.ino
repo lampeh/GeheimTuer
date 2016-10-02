@@ -228,6 +228,9 @@ unsigned long openMillis = 0;
 const unsigned long debounceInterval = 2; // shift inputs into debounce register every debounceInterval ms
 unsigned long debounceMillis = 0;
 
+const unsigned long debounceIgnoreInterval = 100; // ignore buttons for debounceIgnoreInterval*debounceInterval ms
+unsigned long debounceIgnore = 0;
+
 // TODO: use structured profiles
 unsigned long ledMillis = 0;
 const unsigned long ledSolidInterval = 250; // constantly update LED stripe in solid mode
@@ -396,7 +399,12 @@ void loop() {
   if (debounceMillis >= debounceInterval) {
     debounceMillis = 0;
 
-    debounce(switchTrigger, &swTrigger, &swTriggerDeglitch, &swTriggerDebounce);
+    if (!debounceIgnore) {
+      debounce(switchTrigger, &swTrigger, &swTriggerDeglitch, &swTriggerDebounce);
+    } else {
+      debounceIgnore--;
+    }
+ 
     debounce(switchFront, &swFront, &swFrontDeglitch, &swFrontDebounce);
     debounce(switchBack, &swBack, &swBackDeglitch, &swBackDebounce);
     debounce(pirPin, &pirTrigger, &pirDeglitch, &pirDebounce);
@@ -468,6 +476,7 @@ void loop() {
         if (swTrigger == LOW) {
           debug(currentMillis, F("Button switch triggered - opening door\r\n"));
           initDrive(backward, accelProfileHigh);
+          debounceIgnore = debounceIgnoreInterval;
           swTrigger = HIGH; // re-arm swTrigger
         } else {
           // maybe someone tried to pull the door open
