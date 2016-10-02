@@ -65,9 +65,9 @@ struct accelProfile {
 const struct accelProfile accelProfileLow[] = {
   {
     maxMillis: 13000,
-    stepMillis: 50,
+    stepMillis: 5,
     factor: 1,
-    add: 4,
+    add: 1,
     minPWM: 0,
     maxPWM: 64,
     startPWM: 0,
@@ -85,7 +85,7 @@ const struct accelProfile accelProfileLow[] = {
 // TODO: install less stiff spring between belt and door to dampen the initial pull
 const struct accelProfile accelProfileHigh[] = {
   { // accelerate and keep running
-    maxMillis: 2450,
+    maxMillis: 2500,
     stepMillis: 4,
     factor: 1,
     add: 1,
