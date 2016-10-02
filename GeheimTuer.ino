@@ -449,6 +449,7 @@ void loop() {
         dsCount = scan1Wire(dsAddrs, dsMax);
         break;
       case 'l':
+        debug(currentMillis, F("Fan full\r\n"));
         digitalWrite(fanPWMPin, HIGH);
         fanOverride = true;
         fanPWM = 255;
@@ -526,7 +527,7 @@ void loop() {
         doorState = doorOpen;
         break;
       }
-      // fall-through to next case
+      // fall-through to doorClosing
 
     case doorClosing:
       if (doorState == doorClosing && swFront == LOW) {
@@ -840,7 +841,8 @@ void loop() {
             Serial.print(maxTemp);
             Serial.print(F(")\r\n"));
           }
-        } else if (fanPWM > 0) {
+        } else if (fanPWM > fanMin) {
+          debug(currentMillis, F("Fan min\r\n"));
           fanPWM = fanMin;
         }
       } else {
