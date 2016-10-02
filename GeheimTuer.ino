@@ -404,7 +404,7 @@ void loop() {
     } else {
       debounceIgnore--;
     }
- 
+
     debounce(switchFront, &swFront, &swFrontDeglitch, &swFrontDebounce);
     debounce(switchBack, &swBack, &swBackDeglitch, &swBackDebounce);
     debounce(pirPin, &pirTrigger, &pirDeglitch, &pirDebounce);
@@ -958,8 +958,25 @@ inline void setMotorBits(const byte bits) {
   digitalWrite(motorInBPin, (bits & 0x01) ? (HIGH) : (LOW));
 }
 
+void _motorFree() {
+  setMotorBits(0x00);
+}
+
+void _motorBrake() {
+  _motorFree();
+  digitalWrite(motorPWMPin, HIGH);
+}
+
+void _motorForward() {
+  setMotorBits(0x02);
+}
+
+void _motorBackward() {
+  setMotorBits(0x01);
+}
+
 void motorDisable() {
-  // actively pull diag pins low, disables driver bridges
+  // actively pull diag pins low, disables both driver bridges
   digitalWrite(motorDiagAPin, LOW);
   pinMode(motorDiagAPin, OUTPUT);
 
@@ -981,18 +998,9 @@ void motorBrake() {
   Serial.print(F("Brake engaged\r\n"));
 }
 
-void _motorBrake() {
-  setMotorBits(0x00);
-  digitalWrite(motorPWMPin, HIGH);
-}
-
 void motorFree() {
   _motorFree();
   Serial.print(F("Brake released\r\n"));
-}
-
-void _motorFree() {
-  setMotorBits(0x00);
 }
 
 void motorForward() {
@@ -1000,17 +1008,9 @@ void motorForward() {
   Serial.print(F("Forward\r\n"));
 }
 
-void _motorForward() {
-  setMotorBits(0x02);
-}
-
 void motorBackward() {
   _motorBackward();
   Serial.print(F("Backward\r\n"));
-}
-
-void _motorBackward() {
-  setMotorBits(0x01);
 }
 
 
