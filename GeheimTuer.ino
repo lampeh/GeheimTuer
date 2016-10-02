@@ -704,6 +704,17 @@ void loop() {
           }
 
           ledptr = &tmp_leds[0];
+
+          // quick hack: blink outer LEDs if someone approaches the door
+          // TODO: fix double period at fader counter limits
+          if (pirTrigger == HIGH) {
+            if ((ledState.fader / 20) % 2) {
+              tmp_leds[0] = tmp_leds[MAXPIX-1] = {g: 0xFF, r: 0xFF, b: 0x00};
+            } else {
+              tmp_leds[1] = tmp_leds[MAXPIX-2] = {g: 0xFF, r: 0xFF, b: 0x00};
+            }
+          }
+
           LED.sync();
         }
         break;
