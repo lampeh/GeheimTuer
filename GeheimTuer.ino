@@ -244,9 +244,9 @@ signed int dsResults[dsMax];
 
 unsigned long dsMillis = 0;
 const unsigned long dsInterval = 1000; // sensor read interval
-const signed int tempMax = 40/0.0625; // run fan at full speed above tempMax
-const signed int tempMin = 33/0.0625; // run fan at minimum speed at tempMin
-const signed int tempHyst = 3/0.0625; // shut off fan at tempMin-tempHyst
+const signed int tempMax = 38/0.0625; // run fan at full speed above tempMax
+const signed int tempMin = 30/0.0625; // run fan at minimum speed at tempMin
+const signed int tempHyst = 2/0.0625; // shut off fan at tempMin-tempHyst
 
 byte fanPWM;
 const byte fanMin = 170; // minimum PWM limit at temp > tempMin
