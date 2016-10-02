@@ -1,4 +1,4 @@
-#include <avr/wdt.h>
+//#include <avr/wdt.h>
 
 #include <WS2812.h>
 #include <OneWire.h>
@@ -259,7 +259,7 @@ uint16_t swFrontDebounce, swBackDebounce, swTriggerDebounce, motorDiagADebounce,
 
 
 void setup() {
-  wdt_disable();
+//  wdt_disable();
 
   pinMode(statusLED, OUTPUT);
   digitalWrite(statusLED, HIGH);
@@ -354,7 +354,7 @@ void setup() {
   digitalWrite(statusLED, LOW);
 
   // reset device if loop() takes too long
-  wdt_enable(WDTO_120MS);
+//  wdt_enable(WDTO_120MS);
 }
 
 
@@ -362,7 +362,7 @@ void loop() {
   unsigned long currentMillis;
   unsigned long elapsedMillis;
 
-  wdt_reset();
+//  wdt_reset();
 
   currentMillis = millis();
   // millis() will overflow after approximately 50 days.
