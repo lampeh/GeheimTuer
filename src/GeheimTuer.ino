@@ -224,7 +224,6 @@ const unsigned long iButtonInterval = 40; // ms between scans for iButton device
 Debounce iButtonTrigger(4); // 4bit debounce -> 3 successive iButton reads to trigger
 
 
-//__attribute__((always_inline))
 void debug(const __FlashStringHelper *const string) {
   Serial.print(lastMillis);
   Serial.write(' ');
@@ -881,7 +880,6 @@ void loop() {
 // fills dsAddrs[] with at most dsMax 8-byte addresses
 // returns the number of registered addresses
 // TODO: requires global OneWire instance "ds"
-__attribute__((always_inline))
 byte scan1Wire(byte dsAddrs[][8], const byte dsMax) {
   byte addr[8];
   byte dsIdx = 0;
@@ -911,7 +909,6 @@ byte scan1Wire(byte dsAddrs[][8], const byte dsMax) {
   return dsIdx;
 }
 
-__attribute__((always_inline))
 bool searchButton() {
   byte addr[8];
 
@@ -928,7 +925,6 @@ bool searchButton() {
 
 
 // set profile pointer, reset counters, set driver inputs
-__attribute__((always_inline))
 void initDrive(const enum Motor::motorDir dir, const struct Motor::accelProfile *const profile) {
   accelProfile = profile;
 
@@ -957,7 +953,6 @@ void initDrive(const enum Motor::motorDir dir, const struct Motor::accelProfile 
 }
 
 
-__attribute__((always_inline))
 void setMotorDir(const enum Motor::motorDir dir) {
   switch (dir) {
     case Motor::motorForward:
@@ -1013,7 +1008,6 @@ void setMotorDir(const enum Motor::motorDir dir) {
    PWM frequency divisors. His post can be viewed at:
      http://forum.arduino.cc/index.php?topic=16612#msg121031
 */
-__attribute__((always_inline))
 void setPwmFrequency(const int pin, const int divisor) {
   byte mode;
   if (pin == 5 || pin == 6 || pin == 9 || pin == 10) {
@@ -1087,4 +1081,3 @@ void setLeds2(const cRGB &color1, const cRGB &color2, const unsigned int modulo,
   memset(&ledState, 0x00, sizeof(ledState));
   ledMode = mode;
 }
-

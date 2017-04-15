@@ -3,7 +3,6 @@
 #include "Motor.h"
 
 /*
-__attribute__((always_inline))
 static void _memcpy_P(void *dest, const void *src, size_t n) {
   for (size_t i = (n >> 2); i > 0; i--) {
     *(uint32_t *)dest = pgm_read_dword(src);
@@ -21,7 +20,6 @@ static void _memcpy_P(void *dest, const void *src, size_t n) {
 
 
 // set profile pointer, reset counters, set driver inputs
-__attribute__((always_inline))
 void initDrive(const enum motorDir dir, const struct accelProfile *const profile) {
   accelProfile = profile;
 
@@ -126,4 +124,3 @@ void Motor::setMotorDir(const enum motorDir dir) {
       break;
   }
 }
-

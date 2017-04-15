@@ -20,25 +20,15 @@ class Motor {
     __attribute__((always_inline))
     Motor(const int diagAPin, const int diagBPin, const int inAPin, const int inBPin, const int PWMPin) : motorDiagAPin(diagAPin), motorDiagBPin(diagBPin), motorInAPin(inAPin), motorInBPin(inBPin), motorPWMPin(PWMPin) {}
 
-    __attribute__((always_inline))
     void setMotorDir(const enum motorDir dir);    
 
-    __attribute__((always_inline))
     void enable();
-
-    __attribute__((always_inline))
     void disable();
 
-    __attribute__((always_inline))
     void free();
-
-    __attribute__((always_inline))
     void brake();
 
-    __attribute__((always_inline))
     void forward();
-
-    __attribute__((always_inline))
     void backward();
 
   private:
@@ -54,16 +44,9 @@ class Motor {
     __attribute__((always_inline))
     void setMotorBits(const bool A, const bool B);
 
-    __attribute__((always_inline))
     void _free();
-    
-    __attribute__((always_inline))
     void _brake();
     
-    __attribute__((always_inline))
     void _forward();
-    
-    __attribute__((always_inline))
     void _backward();
 };
-

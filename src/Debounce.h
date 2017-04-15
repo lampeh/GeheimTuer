@@ -6,10 +6,7 @@ class Debounce {
     __attribute__((always_inline))
     Debounce(const unsigned int shift_bits = 13) : shift_mask(~(~0U << shift_bits)), shift_high(~(~0U << (shift_bits - 1))), shift_low(1 << (shift_bits - 1)) {};
 
-    __attribute__((always_inline))
     void init(const bool initState) { debounce = (state = deglitch = ((initState) ? (1) : (0))) * ~0U; };
-
-    __attribute__((always_inline))
     bool update(const bool nextState);
 
     bool operator ()() const { return state; }
@@ -31,10 +28,7 @@ class PinDebounce: public Debounce {
     __attribute__((always_inline))
     PinDebounce(const int pin, const unsigned int shift_bits = 13) : Debounce(shift_bits), port(portInputRegister(digitalPinToPort(pin))), mask(digitalPinToBitMask(pin)) {};
 
-    __attribute__((always_inline))
     void init() { Debounce::init(*port & mask); };
-
-    __attribute__((always_inline))
     bool update() { return Debounce::update(*port & mask); };
 
   private:
