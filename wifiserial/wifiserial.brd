@@ -79,8 +79,6 @@
 <text x="12.3825" y="4.7625" size="1.016" layer="26" font="vector" rot="MR0">TX</text>
 <text x="9.8425" y="4.7625" size="1.016" layer="26" font="vector" rot="MR0">RX</text>
 <text x="7.62" y="4.7625" size="1.016" layer="26" font="vector" rot="MR0">DTR</text>
-<text x="2.2225" y="12.065" size="1.016" layer="25" font="vector" rot="R90">Cloud-Module</text>
-<text x="20.955" y="21.2725" size="1.016" layer="25" rot="SR270">GeheimTuer</text>
 <text x="4.7625" y="0.635" size="1.016" layer="26" font="vector" rot="MR0">v1.1</text>
 <text x="22.86" y="7.3025" size="1.016" layer="26" font="vector" rot="MR0">GeheimTuer Cloud-Module</text>
 <text x="21.9075" y="6.35" size="0.6096" layer="26" font="vector" rot="MR0">https://github.com/lampeh/GeheimTuer</text>
